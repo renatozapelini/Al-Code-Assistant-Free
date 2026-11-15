@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 
 describe('atualização e pastas locais', () => {
   const update = { ok: true, currentVersion: APP_VERSION, latestVersion: '3.3.0', available: true,
-    downloadUrl: 'https://github.com/renatozapelini/Ai/releases/download/v3.3.0/Code-Assistants-v3.3.0.apk' };
+    downloadUrl: 'https://github.com/renatozapelini/Al-Code-Assistant-Free/releases/download/v3.3.0/Code-Assistants-v3.3.0.apk' };
   test('valida release mais novo e não inventa disponibilidade', () => {
     expect(validateUpdateInfo(update).available).toBe(true);
     expect(validateUpdateInfo({ ok: false, currentVersion: APP_VERSION, available: false }).available).toBe(false);
@@ -13,7 +13,7 @@ describe('atualização e pastas locais', () => {
   test('recusa versões erradas, inseguras e links fora do APK autorizado', () => {
     for (const patch of [{ currentVersion: '3.0.1' }, { latestVersion: '3.1.0' }, { latestVersion: '3.0.9' }, { latestVersion: '3.1.1-beta' },
       { downloadUrl: update.downloadUrl + '?token=secret' }, { downloadUrl: update.downloadUrl.replace('github.com', 'github.com.evil.test') },
-      { downloadUrl: update.downloadUrl.replace('/Ai/', '/Other/') }, { downloadUrl: update.downloadUrl.replace('https:', 'http:') },
+      { downloadUrl: update.downloadUrl.replace('/Al-Code-Assistant-Free/', '/Other/') }, { downloadUrl: update.downloadUrl.replace('https:', 'http:') },
       { downloadUrl: update.downloadUrl.replace('.apk', '.exe') }, { ok: false }, { latestVersion: '3.99999999999999999999999999.0' }]) {
       expect(() => validateUpdateInfo({ ...update, ...patch })).toThrow();
     }

@@ -15,10 +15,10 @@ import static com.qoder2api.hub.Json.*;
 /** Public release metadata only. Never downloads, installs or forwards application credentials. */
 final class AppUpdates {
     static final String CURRENT_VERSION = "3.2.0";
-    static final String RELEASES_URL = "https://api.github.com/repos/renatozapelini/Ai/releases";
+    static final String RELEASES_URL = "https://api.github.com/repos/renatozapelini/Al-Code-Assistant-Free/releases";
     static final int TIMEOUT_MS = 8000, BODY_LIMIT = 1024 * 1024;
     static final long APK_LIMIT = 100L * 1024 * 1024, SUCCESS_TTL = 3600000, FAILURE_TTL = 300000;
-    private static final String REPOSITORY_URL = "https://github.com/renatozapelini/Ai/releases/";
+    private static final String REPOSITORY_URL = "https://github.com/renatozapelini/Al-Code-Assistant-Free/releases/";
     private static final Pattern TAG = Pattern.compile("^v(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$");
     private static final Version INSTALLED = Version.tag("v" + CURRENT_VERSION);
     private static final ScheduledThreadPoolExecutor DEADLINES = new ScheduledThreadPoolExecutor(1, task -> {

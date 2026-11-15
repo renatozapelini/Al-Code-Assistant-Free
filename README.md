@@ -38,7 +38,7 @@ O aplicativo inclui configurações para OpenAI, Google Gemini, Anthropic/Claude
 
 ## Instalação
 
-Baixe o APK canônico na página de [Releases](https://github.com/renatozapelini/Ai/releases). O arquivo segue o formato:
+Baixe o APK canônico na página de [Releases](https://github.com/renatozapelini/Al-Code-Assistant-Free/releases). O arquivo segue o formato:
 
 ```text
 Code-Assistants-vX.Y.Z.apk

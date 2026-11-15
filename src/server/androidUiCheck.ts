@@ -547,7 +547,7 @@ java = javaProcess;
   const updateProbe = await evaluate(`fetch('/api/app/updates',{headers:{'X-App-Session':window.AndroidApp.getSessionToken()}}).then(async r=>({status:r.status,body:(await r.text()).slice(0,400)})).catch(e=>({error:String(e)}))`);
   console.log('UPDATE STATUS:', updateStatus, 'PROBE:', JSON.stringify(updateProbe));
   assert(updateStatus.includes('lista pública de releases está vazia'), `Manual update check must report the empty public release list honestly, got: ${updateStatus}`);
-  assert(await evaluate(`(()=>{const s=${updateScope};return s.textContent.includes('Code Assistants 3.2.0')&&s.textContent.includes('renatozapelini/Ai')})()`), 'Update panel must state the installed version and the public GitHub release source');
+  assert(await evaluate(`(()=>{const s=${updateScope};return s.textContent.includes('Code Assistants 3.2.0')&&s.textContent.includes('renatozapelini/Al-Code-Assistant-Free')})()`), 'Update panel must state the installed version and the public GitHub release source');
   assert(!await evaluate("[...document.querySelectorAll('a')].some(a=>window.__uiVisible(a)&&a.textContent.includes('Baixar novo APK'))"), 'Manual update check with empty releases must never fabricate an APK download');
   await checkLayout('Opções GitHub update check');
   await capture('11-opcoes-atualizacao-github-mobile.png', 'section[aria-label="Atualizações do aplicativo"]');

@@ -16,8 +16,8 @@ export function validateUpdateInfo(value: unknown): UpdateInfo {
     const first = latest.findIndex((n, i) => n !== current[i]);
     if (latest.some(n => !Number.isSafeInteger(n)) || first < 0 || latest[first] < current[first]) throw new Error('A versão recebida não é mais nova.');
     const version = data.latestVersion;
-    const expected = `https://github.com/renatozapelini/Ai/releases/download/v${version}/Code-Assistants-v${version}.apk`;
-    const expectedBare = `https://github.com/renatozapelini/Ai/releases/download/${version}/Code-Assistants-v${version}.apk`;
+    const expected = `https://github.com/renatozapelini/Al-Code-Assistant-Free/releases/download/v${version}/Code-Assistants-v${version}.apk`;
+    const expectedBare = `https://github.com/renatozapelini/Al-Code-Assistant-Free/releases/download/${version}/Code-Assistants-v${version}.apk`;
     if (data.downloadUrl !== expected && data.downloadUrl !== expectedBare) throw new Error('Link de APK fora do repositório autorizado.');
   }
   return data;
@@ -62,14 +62,14 @@ export function AppUpdatePanel({ apiFetch, expanded }: { apiFetch: (path: string
     {expanded && <p role="status" className="text-xs text-zinc-400">{error || info?.message || 'Consultando releases do GitHub…'}</p>}
     {info?.available && <a href={info.downloadUrl} target="_self" rel="noreferrer" className="min-h-[44px] inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 text-xs font-semibold text-zinc-950"><Download className="w-4 h-4" />Baixar novo APK</a>}
     {expanded && <div className="rounded-lg border border-zinc-800 bg-[#090B0E] p-3 space-y-1.5 text-[11px] text-zinc-400">
-      <p className="text-xs font-semibold text-zinc-200">GitHub conectado · renatozapelini/Ai</p>
+      <p className="text-xs font-semibold text-zinc-200">GitHub conectado · renatozapelini/Al-Code-Assistant-Free</p>
       <p>Repositório público de releases consultado pelo atualizador. Nenhuma chave, conta ou projeto é enviado ao GitHub.</p>
       {typeof info?.checkedAt === 'number' && <p>Última verificação: {new Date(info.checkedAt).toLocaleString('pt-BR')}</p>}
       <div className="flex flex-wrap gap-x-4">
-        <a href="https://github.com/renatozapelini/Ai" target="_self" rel="noreferrer" className="min-h-[44px] inline-flex items-center gap-1.5 text-emerald-300"><ExternalLink className="w-3.5 h-3.5" />Abrir repositório</a>
-        <a href="https://github.com/renatozapelini/Ai/releases" target="_self" rel="noreferrer" className="min-h-[44px] inline-flex items-center gap-1.5 text-emerald-300"><ExternalLink className="w-3.5 h-3.5" />Abrir releases</a>
+        <a href="https://github.com/renatozapelini/Al-Code-Assistant-Free" target="_self" rel="noreferrer" className="min-h-[44px] inline-flex items-center gap-1.5 text-emerald-300"><ExternalLink className="w-3.5 h-3.5" />Abrir repositório</a>
+        <a href="https://github.com/renatozapelini/Al-Code-Assistant-Free/releases" target="_self" rel="noreferrer" className="min-h-[44px] inline-flex items-center gap-1.5 text-emerald-300"><ExternalLink className="w-3.5 h-3.5" />Abrir releases</a>
       </div>
     </div>}
-    {expanded && <p className="text-[11px] text-zinc-500">Consulta automática ao abrir e a cada hora. O APK precisa estar publicado em Releases de renatozapelini/Ai. Download e instalação são confirmados por você no Android; não há instalação silenciosa.</p>}
+    {expanded && <p className="text-[11px] text-zinc-500">Consulta automática ao abrir e a cada hora. O APK precisa estar publicado em Releases de renatozapelini/Al-Code-Assistant-Free. Download e instalação são confirmados por você no Android; não há instalação silenciosa.</p>}
   </section>;
 }

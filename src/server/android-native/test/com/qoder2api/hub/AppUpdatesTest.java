@@ -15,7 +15,7 @@ import static com.qoder2api.hub.Json.*;
 public final class AppUpdatesTest {
     private static int checks;
     private static final String SECRET = "untrusted-body-or-user-key-must-not-leak";
-    private static final String BASE = "https://github.com/renatozapelini/Ai/releases/";
+    private static final String BASE = "https://github.com/renatozapelini/Al-Code-Assistant-Free/releases/";
     private static void check(boolean value, String label) { checks++; if (!value) throw new AssertionError(label); }
     private static void eq(Object actual, Object expected, String label) { check(Objects.equals(actual, expected), label + ": expected " + expected + ", got " + actual); }
     private static byte[] bytes(String text) { return text.getBytes(StandardCharsets.UTF_8); }
@@ -93,10 +93,10 @@ public final class AppUpdatesTest {
             canonical.replace("github.com", "api.github.com"), canonical.replace("github.com", "GITHUB.COM"),
             canonical.replace("github.com", "user@github.com"), canonical.replace("github.com", "github.com:443"),
             canonical.replace("github.com", "github.com:8443"), canonical + "?token=" + SECRET, canonical + "#apk",
-            canonical.replace("/Ai/", "/Other/"), canonical.replace("/renatozapelini/", "/another/"),
+            canonical.replace("/Al-Code-Assistant-Free/", "/Other/"), canonical.replace("/renatozapelini/", "/another/"),
             canonical.replace("/v3.3.1/", "/v3.3.1/../v3.3.1/"), canonical.replace("/v3.3.1/", "/v3.3.1/%2e%2e/v3.3.1/"),
             canonical.replace("/v3.3.1/", "/v3.3.1%2f/"), canonical.replace("/v3.3.1/", "//v3.3.1/"),
-            canonical.replace("/v3.3.1/", "/v3.3.2/"), canonical.replace("/Ai/", "/%41i/"), canonical.replace("github.com/", "github.com\\"), canonical + "\n"}) {
+            canonical.replace("/v3.3.1/", "/v3.3.2/"), canonical.replace("/Al-Code-Assistant-Free/", "/%41l-Code-Assistant-Free/"), canonical.replace("github.com/", "github.com\\"), canonical + "\n"}) {
             Map<String,Object> bad = release("3.3.1"); asset(bad).put("browser_download_url", url); noApk(arr(bad));
         }
         for (Object size : new Object[]{null, "12345", 0, -1, 1.5, AppUpdates.APK_LIMIT + 1}) {
