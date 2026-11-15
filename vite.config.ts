@@ -20,10 +20,10 @@ export default defineConfig(() => {
         ],
         manifest: {
           id: '/',
-          name: 'Qoder2API-Hub Android',
-          short_name: 'Qoder2API',
+          name: 'Code Assistants',
+          short_name: 'Code Assistants',
           description:
-            'App Android e gateway multi-conta para Qoder (Global & CN) compatível com OpenAI, Codex e Anthropic.',
+            'Projetos de programação com múltiplas IAs, arquivos, tarefas e troca automática preservando checkpoints.',
           theme_color: '#090B0E',
           background_color: '#090B0E',
           display: 'standalone',

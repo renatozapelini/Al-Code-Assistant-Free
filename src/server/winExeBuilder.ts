@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { ensureFreshDist } from './distHelper.ts';
@@ -37,12 +38,13 @@ function walkFiles(dir: string, baseDir: string, out: { rel: string; abs: string
 
 let buildInFlight: Promise<string> | null = null;
 
-export async function buildStandaloneWindowsExe(): Promise<string> {
+export async function buildStandaloneWindowsExe(options: { includeAndroid?: boolean } = {}): Promise<string> {
+  if (options.includeAndroid) throw new Error("O APK atualizado das code assistants ainda não está disponível.");
   if (buildInFlight) return buildInFlight;
 
   buildInFlight = (async () => {
     const rootDir = process.cwd();
-    const outExe = '/tmp/Qoder2API-Hub.exe';
+    const outExe = path.join(os.tmpdir(), 'Code-Assistants.exe');
 
     const distDir = await ensureFreshDist();
 
@@ -58,20 +60,10 @@ export async function buildStandaloneWindowsExe(): Promise<string> {
       };
     }
 
-    const tempBuildDir = '/tmp/qoder2api-win-build';
+    // Build dir inside the project so bare imports (express) resolve against
+    // the project node_modules without symlinks (which need privileges on Windows).
+    const tempBuildDir = path.join(rootDir, '.win-build');
     fs.mkdirSync(tempBuildDir, { recursive: true });
-
-    const nodeModulesLink = path.join(tempBuildDir, 'node_modules');
-    const projectNodeModules = path.join(rootDir, 'node_modules');
-    try {
-      const stat = fs.lstatSync(nodeModulesLink);
-      if (!stat.isSymbolicLink()) {
-        fs.rmSync(nodeModulesLink, { recursive: true, force: true });
-        fs.symlinkSync(projectNodeModules, nodeModulesLink, 'dir');
-      }
-    } catch {
-      fs.symlinkSync(projectNodeModules, nodeModulesLink, 'dir');
-    }
 
     const assetsTsPath = path.join(tempBuildDir, 'embeddedAssets.ts');
     fs.writeFileSync(
@@ -88,17 +80,25 @@ export async function buildStandaloneWindowsExe(): Promise<string> {
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { createHubRouter } from ${JSON.stringify(hubRouterAbs)};
 import { EMBEDDED_ASSETS } from ${JSON.stringify(assetsAbs)};
 
 if (!process.env.QD_DATA_DIR) {
   process.env.QD_DATA_DIR = path.join(os.homedir(), '.qoder2api-hub');
 }
 
+// Dynamic import AFTER QD_DATA_DIR is set: the store reads it at module load.
+const { createAssistantRouter } = await import(${JSON.stringify(hubRouterAbs)});
+
 const PORT = Number(process.env.PORT || 8790);
 const app = express();
 app.use(express.json({ limit: '25mb' }));
-app.use(createHubRouter());
+app.use(createAssistantRouter());
+
+app.get("/api/app/download/windows-exe", (_req, res) => res.download(process.execPath, "Code-Assistants.exe"));
+app.get("/api/app/download/android-apk", (_req, res) => {
+  res.status(503).json({ error: { message: "O APK atualizado das code assistants ainda não está disponível." } });
+});
+app.use(['/api', '/v1'], (_req, res) => res.status(404).json({ error: { type: 'not_found', message: 'Endpoint não encontrado.' } }));
 
 app.get('*', (req, res) => {
   const reqPath = req.path === '/' ? '/index.html' : req.path;
@@ -134,7 +134,7 @@ function openDesktopWindow(url: string): void {
 
 app.listen(PORT, '127.0.0.1', () => {
   const url = 'http://127.0.0.1:' + PORT;
-  console.log('Qoder2API-Hub Windows rodando em ' + url);
+  console.log('Code Assistants Windows rodando em ' + url);
   console.log('Dados salvos em: ' + process.env.QD_DATA_DIR);
   openDesktopWindow(url);
 });

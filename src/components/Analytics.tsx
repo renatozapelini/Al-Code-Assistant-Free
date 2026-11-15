@@ -22,7 +22,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { PROVIDER_PRESETS } from '../data/providerPresets';
 import type { HubOverview, NavTab, ProviderPresetId } from '../types/hub';
 
 interface AnalyticsProps {
@@ -59,54 +58,15 @@ interface ProviderMetricRow {
   lastError?: string;
 }
 
-// Reference blended USD per 1M tokens (used only for cost-effectiveness comparison)
-const REFERENCE_USD_PER_1M_TOKENS: Partial<Record<ProviderPresetId, number>> = {
-  gemini: 0,
-  openrouter: 0,
-  groq: 0,
-  github: 0,
-  cerebras: 0,
-  nvidia: 0,
-  sambanova: 0,
-  huggingface: 0,
-  cloudflare: 0,
-  pollinations: 0,
-  ollama: 0,
-  lmstudio: 0,
-  deepseek: 0.55,
-  qwen: 0.8,
-  mistral: 0.9,
-  together: 0.9,
-  fireworks: 0.9,
-  zhipu: 1.0,
-  kimi: 1.2,
-  perplexity: 1.5,
-  grok: 3.0,
-  openai: 4.0,
-  anthropic: 6.0,
-  custom: 0.5,
-};
-
+// A provider name or advertised free tier does not establish this account's bill.
 function getPresetRefRate(presetId: ProviderPresetId, model: string, baseUrl: string): {
   isFreeTier: boolean;
   rate: number;
 } {
-  const lowerModel = model.toLowerCase();
-  const lowerUrl = baseUrl.toLowerCase();
-  if (
-    lowerModel.includes(':free') ||
-    lowerUrl.includes('127.0.0.1') ||
-    lowerUrl.includes('localhost') ||
-    lowerUrl.includes('pollinations')
-  ) {
-    return { isFreeTier: true, rate: 0 };
-  }
-  const preset = PROVIDER_PRESETS.find((p) => p.id === presetId);
-  if (preset && (preset.category === 'free_tier' || preset.category === 'local')) {
-    return { isFreeTier: true, rate: 0 };
-  }
-  const rate = REFERENCE_USD_PER_1M_TOKENS[presetId] ?? 0.5;
-  return { isFreeTier: rate === 0, rate };
+  let local = false;
+  try { local = ['127.0.0.1', 'localhost'].includes(new URL(baseUrl).hostname); } catch { /* invalid endpoint is checked when saving */ }
+  const zeroReference = local || (presetId === 'openrouter' && model.toLowerCase().endsWith(':free'));
+  return { isFreeTier: zeroReference, rate: zeroReference ? 0 : Number.NaN };
 }
 
 function shortenLabel(label: string): string {
@@ -151,7 +111,7 @@ const TokenChartTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) =>
         <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-400">Custo Est.:</span>
           <span className={row.isFreeTier ? 'text-emerald-400' : 'text-amber-300'}>
-            {row.isFreeTier ? '$0.00 (Grátis)' : `$${row.estimatedCostUsd.toFixed(4)}`}
+            {row.isFreeTier ? '$0.00 (referência)' : Number.isFinite(row.estimatedCostUsd) ? `$${row.estimatedCostUsd.toFixed(4)}` : 'Não verificado'}
           </span>
         </div>
       </div>
@@ -209,7 +169,7 @@ export const Analytics: React.FC<AnalyticsProps> = ({
     // 1. External / Free Coding AI Providers
     for (const prv of providers) {
       const matchingLogs = logs.filter(
-        (l) => l.accountUid === prv.id || (l.provider && l.provider === prv.name)
+        (l) => l.providerId === prv.id || l.accountUid === prv.id || l.providerName === prv.name || l.provider === prv.name
       );
       const logSuccesses = matchingLogs.filter((l) => l.status < 400).length;
       const logFailures = matchingLogs.filter((l) => l.status >= 400).length;
@@ -261,46 +221,6 @@ export const Analytics: React.FC<AnalyticsProps> = ({
       });
     }
 
-    // 2. Qoder Pool (if any accounts or Qoder logs exist)
-    const qoderLogs = logs.filter(
-      (l) => l.provider === 'Qoder' || (!l.provider && l.accountNickname)
-    );
-    const qoderReqsFromAccounts = accounts.reduce((s, a) => s + (a.requestCount || 0), 0);
-    if (accounts.length > 0 || qoderLogs.length > 0) {
-      const qSuccessLogs = qoderLogs.filter((l) => l.status < 400).length;
-      const qFailLogs = qoderLogs.filter((l) => l.status >= 400).length;
-      const successes = Math.max(qoderReqsFromAccounts, qSuccessLogs);
-      const failures = qFailLogs;
-      const totalAttempts = successes + failures;
-      const promptTokens = qoderLogs.reduce((s, l) => s + (l.promptTokens || 0), 0);
-      const completionTokens = qoderLogs.reduce((s, l) => s + (l.completionTokens || 0), 0);
-      const totalTokens = promptTokens + completionTokens;
-      const totalLatency = qoderLogs.reduce((s, l) => s + (l.latencyMs || 0), 0);
-      const avgLatencyMs = qoderLogs.length > 0 ? Math.round(totalLatency / qoderLogs.length) : 0;
-
-      result.push({
-        id: 'qoder-pool',
-        name: 'Qoder Pool',
-        shortName: 'Qoder Pool',
-        model: 'Auto / 0x Free',
-        kind: 'qoder',
-        isFreeTier: true,
-        refRatePer1M: 0,
-        requests: totalAttempts,
-        successes,
-        failures,
-        failureRatePct: totalAttempts > 0 ? (failures / totalAttempts) * 100 : 0,
-        reliabilityPct: totalAttempts > 0 ? (successes / totalAttempts) * 100 : 100,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        avgLatencyMs,
-        failoverSaves: qoderLogs.filter((l) => Boolean(l.failoverFrom)).length,
-        estimatedCostUsd: 0,
-        costPer10kTokensUsd: 0,
-        enabled: accounts.some((a) => a.enabled),
-      });
-    }
 
     return result;
   }, [overview]);
@@ -317,7 +237,7 @@ export const Analytics: React.FC<AnalyticsProps> = ({
         return a.failureRatePct - b.failureRatePct || b.successes - a.successes;
       }
       if (sortBy === 'cost') {
-        if (a.refRatePer1M !== b.refRatePer1M) return a.refRatePer1M - b.refRatePer1M;
+        if (a.isFreeTier !== b.isFreeTier) return a.isFreeTier ? -1 : 1;
         return b.totalTokens - a.totalTokens;
       }
       return b.requests - a.requests;
@@ -330,7 +250,8 @@ export const Analytics: React.FC<AnalyticsProps> = ({
     const totalCompletion = filteredRows.reduce((s, r) => s + r.completionTokens, 0);
     const totalRequests = filteredRows.reduce((s, r) => s + r.requests, 0);
     const totalFailures = filteredRows.reduce((s, r) => s + r.failures, 0);
-    const totalCostUsd = filteredRows.reduce((s, r) => s + r.estimatedCostUsd, 0);
+    const totalCostUsd = filteredRows.reduce((s, r) => s + (Number.isFinite(r.estimatedCostUsd) ? r.estimatedCostUsd : 0), 0);
+    const unknownCosts = filteredRows.some(r => !Number.isFinite(r.estimatedCostUsd));
     const freeTokens = filteredRows
       .filter((r) => r.isFreeTier)
       .reduce((s, r) => s + r.totalTokens, 0);
@@ -340,9 +261,8 @@ export const Analytics: React.FC<AnalyticsProps> = ({
     const mostReliable = [...activeWithTraffic].sort(
       (a, b) => a.failureRatePct - b.failureRatePct || b.successes - a.successes
     )[0];
-    const bestCostEffective = [...activeWithTraffic].sort((a, b) => {
+    const bestCostEffective = [...activeWithTraffic].filter(r => Number.isFinite(r.refRatePer1M)).sort((a, b) => {
       if (a.isFreeTier !== b.isFreeTier) return a.isFreeTier ? -1 : 1;
-      if (a.refRatePer1M !== b.refRatePer1M) return a.refRatePer1M - b.refRatePer1M;
       return b.totalTokens - a.totalTokens;
     })[0];
 
@@ -353,6 +273,7 @@ export const Analytics: React.FC<AnalyticsProps> = ({
       totalRequests,
       totalFailures,
       totalCostUsd,
+      unknownCosts,
       freeTokensPct: totalTokens > 0 ? (freeTokens / totalTokens) * 100 : 100,
       globalFailureRate,
       mostReliable,
@@ -411,7 +332,6 @@ export const Analytics: React.FC<AnalyticsProps> = ({
               [
                 { id: 'all', label: `Todos (${rows.length})` },
                 { id: 'external', label: 'IAs de Código (Gratuitas / Externas)' },
-                { id: 'qoder', label: 'Qoder Pool' },
               ] as const
             ).map((opt) => (
               <button
@@ -489,10 +409,10 @@ export const Analytics: React.FC<AnalyticsProps> = ({
               <span>Custo Estimado (Ref.)</span>
             </div>
             <div className="mt-1 text-2xl font-bold font-mono tabular-nums text-emerald-400">
-              ${totals.totalCostUsd.toFixed(4)}
+              {totals.unknownCosts ? 'Não verificado' : `$${totals.totalCostUsd.toFixed(4)}`}
             </div>
             <div className="mt-0.5 text-xs text-zinc-400 tabular-nums">
-              {totals.freeTokensPct.toFixed(0)}% dos tokens em tier gratuito
+              {totals.freeTokensPct.toFixed(0)}% dos tokens com referência zero; confira a cota
             </div>
           </div>
 
@@ -741,7 +661,7 @@ export const Analytics: React.FC<AnalyticsProps> = ({
                     </div>
                     <p className="text-xs text-zinc-400 mt-0.5 tabular-nums">
                       {totals.bestCostEffective.isFreeTier
-                        ? `Tier gratuito ($0.00 / 1M tokens) — já entregou ${totals.bestCostEffective.totalTokens.toLocaleString('pt-BR')} tokens sem custo.`
+                        ? `Referência zero para modelo local ou :free; cota, condições e faturamento devem ser conferidos no provedor.`
                         : `Taxa de referência $${totals.bestCostEffective.refRatePer1M.toFixed(2)} / 1M tokens — custo estimado $${totals.bestCostEffective.estimatedCostUsd.toFixed(4)}.`}
                     </p>
                   </div>
@@ -758,7 +678,7 @@ export const Analytics: React.FC<AnalyticsProps> = ({
                   Matriz de Confiabilidade &amp; Custo-Benefício
                 </h2>
                 <p className="text-xs text-zinc-400">
-                  Valores em USD são estimativas de referência por 1M tokens para comparação entre APIs gratuitas e pagas.
+                  Custos sem preço verificado ficam desconhecidos. Modelo local ou :free não comprova a cota nem o faturamento da conta.
                 </p>
               </div>
               <span className="text-xs font-mono text-zinc-400 tabular-nums">
@@ -828,16 +748,16 @@ export const Analytics: React.FC<AnalyticsProps> = ({
                       </td>
                       <td className="py-3 pr-4 font-mono tabular-nums text-right whitespace-nowrap">
                         {row.isFreeTier ? (
-                          <span className="text-emerald-400 font-medium">Grátis ($0)</span>
+                          <span className="text-emerald-400 font-medium">Ref. zero</span>
                         ) : (
-                          <span className="text-zinc-300">${row.refRatePer1M.toFixed(2)}</span>
+                          <span className="text-zinc-300">{Number.isFinite(row.refRatePer1M) ? `$${row.refRatePer1M.toFixed(2)}` : 'Não verificado'}</span>
                         )}
                       </td>
                       <td className="py-3 font-mono tabular-nums text-right whitespace-nowrap">
                         {row.isFreeTier ? (
                           <span className="text-emerald-400">$0.0000</span>
                         ) : (
-                          <span className="text-zinc-100">${row.estimatedCostUsd.toFixed(4)}</span>
+                          <span className="text-zinc-100">{Number.isFinite(row.estimatedCostUsd) ? `$${row.estimatedCostUsd.toFixed(4)}` : 'Não verificado'}</span>
                         )}
                       </td>
                     </tr>

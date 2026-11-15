@@ -1,9 +1,6 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-
-const execFileAsync = promisify(execFile);
+import { runPackageScript } from './pkgRunner.ts';
 
 function getNewestMtimeMs(dir: string): number {
   let newest = 0;
@@ -36,10 +33,7 @@ export async function ensureFreshDist(forceRebuild = false): Promise<string> {
 
   if (needsBuild) {
     if (!distBuildInFlight) {
-      distBuildInFlight = execFileAsync('npm', ['run', 'build'], {
-        cwd: rootDir,
-        maxBuffer: 15 * 1024 * 1024,
-      })
+      distBuildInFlight = runPackageScript('build', rootDir)
         .then(() => undefined)
         .finally(() => {
           distBuildInFlight = null;

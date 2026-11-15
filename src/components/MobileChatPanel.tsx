@@ -1,17 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, ChevronDown, ChevronRight, Cloud, Hammer, Loader2, Trash2, Users } from 'lucide-react';
+import { ArrowUp, ChevronDown, ChevronRight, Cloud, FolderCode, KeyRound, Loader2, Trash2 } from 'lucide-react';
 import type {
   ChatMessageItem,
   NavTab,
   QoderModel,
-  RealmId,
   SafeProviderSummary,
 } from '../types/hub';
 
 interface MobileChatPanelProps {
   models: QoderModel[];
   providers: SafeProviderSummary[];
-  accountsCount: number;
+  accountsCount?: number;
   selectedModelId: string;
   onSelectModelId: (id: string) => void;
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
@@ -24,7 +23,6 @@ interface MobileChatPanelProps {
 export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   models,
   providers,
-  accountsCount,
   selectedModelId,
   onSelectModelId,
   apiFetch,
@@ -33,10 +31,18 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   prefillPrompt,
   onConsumePrefill,
 }) => {
-  const [messages, setMessages] = useState<ChatMessageItem[]>([]);
+  const [messages, setMessages] = useState<ChatMessageItem[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('hub-chat-history-v1') || '[]');
+      return Array.isArray(saved) ? saved.filter((m) => m && typeof m.content === 'string' && typeof m.role === 'string').slice(-200) : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('hub-chat-history-v1', JSON.stringify(messages.slice(-200))); } catch { /* Storage quota or private mode. */ }
+  }, [messages]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [realmOverride, setRealmOverride] = useState<'auto' | RealmId>('auto');
+  const enabledProviders = useMemo(() => providers.filter((provider) => provider.enabled), [providers]);
   const [expandedReasoning, setExpandedReasoning] = useState<Record<string, boolean>>({});
   const listEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -47,10 +53,26 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     }
   }, [prefillPrompt, onConsumePrefill]);
 
-  // Put 0x free models at the top for immediate access without paid credits
   const sortedModels = useMemo(() => {
-    return [...models].sort((a, b) => a.priceFactor - b.priceFactor);
-  }, [models]);
+    return models
+      .filter((model) =>
+        (model.source === 'openrouter' || model.source === 'github' || model.source === 'manual') &&
+        model.enable && enabledProviders.some((provider) =>
+          provider.provider === model.provider &&
+          (!model.baseUrl || provider.baseUrl.replace(/\/+$/, '') === model.baseUrl.replace(/\/+$/, ''))
+        )
+      )
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [models, enabledProviders]);
+
+  const chatModelId = selectedModelId === 'auto-failover' ||
+    sortedModels.some((model) => (model.modelName ?? model.id) === selectedModelId) ||
+    enabledProviders.some((provider) => `provider:${provider.id}` === selectedModelId)
+    ? selectedModelId : 'auto-failover';
+
+  useEffect(() => {
+    if (selectedModelId !== chatModelId) onSelectModelId(chatModelId);
+  }, [selectedModelId, chatModelId, onSelectModelId]);
 
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -59,7 +81,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || sending || enabledProviders.length === 0) return;
 
     const userMsg: ChatMessageItem = {
       id: `u-${Date.now()}`,
@@ -76,18 +98,13 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
 
     const startedAt = Date.now();
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (realmOverride !== 'auto') {
-        headers['X-Realm'] = realmOverride;
-      }
-
-      const res = await apiFetch('/api/hub/chat', {
+      const res = await apiFetch('/api/app/assistant/complete', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: selectedModelId,
+          model: chatModelId,
           stream: true,
-          messages: nextHistory.map((m) => ({ role: m.role, content: m.content })),
+          messages: nextHistory.filter((m) => !m.error || m.partial).map((m) => ({ role: m.role, content: m.content })),
         }),
       });
 
@@ -96,10 +113,13 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
         throw new Error(errData.error?.message || `Erro HTTP ${res.status}`);
       }
 
-      const realmMeta = (res.headers.get('X-Qoder-Realm') as RealmId | null) || undefined;
-      const accountMeta = res.headers.get('X-Qoder-Account') || undefined;
-      const providerMeta = res.headers.get('X-Qoder-Provider') || undefined;
-      const failoverMeta = res.headers.get('X-Qoder-Failover-From') || undefined;
+      const decodeHeader = (name: string) => {
+        const value = res.headers.get(name);
+        if (!value) return undefined;
+        try { return decodeURIComponent(value); } catch { return value; }
+      };
+      const providerMeta = decodeHeader('X-App-Provider');
+      const failoverMeta = decodeHeader('X-App-Failover-From');
       const contentType = res.headers.get('content-type') || '';
 
       if (!contentType.includes('text/event-stream') || !res.body) {
@@ -114,11 +134,9 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             role: 'assistant',
             content: reply?.content || 'Resposta vazia recebida do modelo.',
             reasoning: reply?.reasoning_content,
-            model: selectedModelId,
-            realm: realmMeta,
+            model: chatModelId,
             provider: providerMeta,
             failoverFrom: failoverMeta,
-            accountNickname: accountMeta,
             latencyMs: Date.now() - startedAt,
             timestamp: Date.now(),
           },
@@ -134,11 +152,9 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
           id: assistantId,
           role: 'assistant',
           content: '',
-          model: selectedModelId,
-          realm: realmMeta,
+          model: chatModelId,
           provider: providerMeta,
           failoverFrom: failoverMeta,
-          accountNickname: accountMeta,
           timestamp: Date.now(),
         },
       ]);
@@ -148,6 +164,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
       let buffer = '';
       let accContent = '';
       let accReasoning = '';
+      let completed = false;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -160,7 +177,8 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
           const line = rawLine.trim();
           if (!line.startsWith('data:')) continue;
           const payload = line.slice(5).trim();
-          if (!payload || payload === '[DONE]') continue;
+          if (payload === '[DONE]') { completed = true; continue; }
+          if (!payload) continue;
 
           try {
             const parsed = JSON.parse(payload) as {
@@ -193,6 +211,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
           }
         }
       }
+      if (!completed) throw new Error('Resposta interrompida. O conteúdo parcial foi preservado; verifique a disponibilidade das APIs antes de tentar continuar a conversa.');
       onMessageCompleted();
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Falha ao enviar mensagem.';
@@ -200,7 +219,8 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
         const hasTarget = prev.some((m) => m.id === assistantId);
         if (hasTarget) {
           return prev.map((m) =>
-            m.id === assistantId ? { ...m, content: errMsg, error: true } : m
+            m.id === assistantId ? { ...m, content: m.content || errMsg, error: true,
+              partial: Boolean(m.content), errorDetail: m.content ? errMsg : undefined } : m
           );
         }
         return [
@@ -221,103 +241,74 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-148px)] md:h-[calc(100vh-120px)] bg-[#12151B] border border-zinc-800/80 rounded-2xl overflow-hidden">
+    <div className="flex flex-col min-h-[320px] h-[calc(100dvh-196px)] sm:h-[calc(100dvh-148px)] md:h-[calc(100dvh-120px)] bg-[#12151B] border border-zinc-800/80 rounded-2xl overflow-hidden">
       {/* Chat Header Bar */}
-      <div className="px-4 py-3 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 bg-[#0E1116]">
-        <div className="flex items-center gap-2 min-w-0">
-          <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
-          <select
-            aria-label="Selecionar modelo"
-            value={selectedModelId}
-            onChange={(e) => onSelectModelId(e.target.value)}
-            className="min-h-[40px] bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 text-sm font-medium text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[215px] sm:max-w-xs"
-          >
-            <option value="auto-failover">Auto: Cadeia Multi-IA (Sem Parar)</option>
-            {sortedModels.map((m) => (
-              <option key={`${m.key}-${m.id}`} value={m.id}>
-                {m.displayName} ({m.priceFactor === 0 ? '0x Grátis' : `${m.priceFactor}x`})
-              </option>
-            ))}
-            {providers
-              .filter((p) => p.enabled)
-              .map((p) => (
-                <option key={p.id} value={`provider:${p.id}`}>
-                  {p.name} ({p.defaultModel})
+      <div className="px-3 sm:px-4 py-3 border-b border-zinc-800/80 bg-[#0E1116] space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-1 items-center gap-2 min-w-0 max-w-full">
+            <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
+            <select
+              aria-label="Selecionar modelo de API configurada"
+              value={chatModelId}
+              onChange={(e) => onSelectModelId(e.target.value)}
+              className="min-w-0 w-full min-h-[40px] bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 text-sm font-medium text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:max-w-xs"
+            >
+              <option value="auto-failover">Auto: fila de APIs configuradas</option>
+              {sortedModels.map((model) => (
+                <option key={model.key} value={model.modelName ?? model.id}>
+                  {model.displayName} · {model.provider}{model.pricing?.prompt === 0 && model.pricing?.completion === 0 ? ' · Grátis (preço/token = 0)' : ''}
                 </option>
               ))}
-          </select>
-
-          <select
-            aria-label="Selecionar região"
-            value={realmOverride}
-            onChange={(e) => setRealmOverride(e.target.value as 'auto' | RealmId)}
-            className="min-h-[40px] bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 text-xs font-medium text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="auto">Região: Auto</option>
-            <option value="intl">Global</option>
-            <option value="cn">China</option>
-          </select>
+              {enabledProviders.map((provider) => (
+                <option key={provider.id} value={`provider:${provider.id}`}>
+                  {provider.name} ({provider.defaultModel})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onNavigate('projects')}
+              className="min-h-[40px] px-3 rounded-lg border border-zinc-800 hover:border-emerald-500/60 hover:text-emerald-300 text-xs font-medium text-zinc-300 flex items-center gap-1.5 transition-colors"
+            >
+              <FolderCode className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Projetos</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMessages([])}
+              disabled={messages.length === 0 || sending}
+              className="min-h-[40px] px-3 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 disabled:opacity-40 flex items-center gap-1.5 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Limpar</span>
+            </button>
+          </div>
         </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => onNavigate('android')}
-            className="min-h-[40px] px-3 rounded-lg border border-zinc-800 hover:border-emerald-500/60 hover:text-emerald-300 text-xs font-medium text-zinc-300 flex items-center gap-1.5 transition-colors"
-          >
-            <Hammer className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Agente de Compilação</span>
-            <span className="sm:hidden">Compilar</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setMessages([])}
-            disabled={messages.length === 0}
-            className="min-h-[40px] px-3 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 disabled:opacity-40 flex items-center gap-1.5 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Limpar</span>
-          </button>
-        </div>
+        <p className="text-xs text-zinc-400">O Chat é uma conversa com as APIs configuradas; não edita arquivos nem executa comandos. Use Projetos para editar e compilar com as assistentes de código.</p>
       </div>
 
       {/* Messages Viewport */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {accountsCount === 0 && messages.length === 0 && (
+        {messages.length === 0 && (
           <div className="max-w-md mx-auto my-8 p-5 rounded-2xl border border-zinc-800 bg-[#090B0E] text-center space-y-3">
-            <Users className="w-8 h-8 text-emerald-400 mx-auto" />
-            <h3 className="text-base font-semibold text-zinc-100">Nenhuma conta ou API conectada</h3>
+            <KeyRound className="w-8 h-8 text-emerald-400 mx-auto" />
+            <h3 className="text-base font-semibold text-zinc-100">
+              {enabledProviders.length === 0 ? 'Nenhuma API de IA ativada' : `Converse com ${enabledProviders.length} ${enabledProviders.length === 1 ? 'API configurada' : 'APIs configuradas'}`}
+            </h3>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Adicione suas chaves de IA (OpenAI, Claude, DeepSeek, Grok, Gemini, Groq, OpenRouter, Ollama) ou conecte contas Qoder para o failover automático nunca parar.
+              {enabledProviders.length === 0
+                ? 'Configure ou ative um provedor na aba APIs IA para começar a conversa.'
+                : 'A conversa usa apenas suas APIs configuradas. A troca automática depende da fila e da disponibilidade dos provedores; se nenhum puder responder, aguarde ou ajuste as APIs.'}
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => onNavigate('apis')}
-                className="w-full min-h-[44px] rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-semibold transition-colors"
-              >
-                Adicionar APIs IA
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('accounts')}
-                className="w-full min-h-[44px] rounded-xl border border-zinc-700 hover:bg-zinc-800 text-zinc-100 text-xs font-semibold transition-colors"
-              >
-                Conectar Qoder
-              </button>
-            </div>
-          </div>
-        )}
-
-        {accountsCount > 0 && messages.length === 0 && (
-          <div className="max-w-md mx-auto my-12 text-center space-y-2">
-            <p className="text-sm font-medium text-zinc-200">
-              Pool ativo com {accountsCount} {accountsCount === 1 ? 'conexão' : 'conexões'} de IA
-            </p>
-            <p className="text-xs text-zinc-400">
-              Se uma conta atingir limite ou ficar sem créditos, o gateway alterna automaticamente para <span className="text-emerald-400 font-medium">0x Grátis</span> ou para sua próxima API conectada.
-            </p>
+            <button
+              type="button"
+              onClick={() => onNavigate('apis')}
+              className="w-full min-h-[44px] rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-semibold transition-colors"
+            >
+              {enabledProviders.length === 0 ? 'Configurar APIs IA' : 'Gerenciar APIs IA'}
+            </button>
           </div>
         )}
 
@@ -354,21 +345,16 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
                   </div>
                 )}
                 {msg.content || (sending ? '...' : '')}
+                {msg.errorDetail && <p className="mt-3 text-xs text-amber-300">{msg.errorDetail}</p>}
               </div>
 
               {!isUser && (
                 <div className="mt-1 px-1 text-[11px] text-zinc-500 font-mono tabular-nums flex flex-wrap items-center gap-1.5">
-                  <span>{msg.model || selectedModelId}</span>
+                  <span>{msg.model || chatModelId}</span>
                   {msg.provider && (
                     <>
                       <span aria-hidden="true">·</span>
                       <span className="text-emerald-400">{msg.provider}</span>
-                    </>
-                  )}
-                  {msg.accountNickname && msg.accountNickname !== msg.provider && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span>{msg.accountNickname}</span>
                     </>
                   )}
                   {msg.failoverFrom && (
@@ -392,7 +378,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
         {sending && (
           <div className="flex items-center gap-2 text-xs text-zinc-400 px-1">
             <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-            <span>Recebendo resposta de {selectedModelId}...</span>
+            <span>{chatModelId === 'auto-failover' ? 'Aguardando resposta das APIs configuradas...' : `Recebendo resposta de ${chatModelId}...`}</span>
           </div>
         )}
         <div ref={listEndRef} />
@@ -414,12 +400,13 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
                 void handleSend();
               }
             }}
-            placeholder="Digite sua mensagem para o Qoder..."
-            className="flex-1 bg-transparent py-2 text-sm text-zinc-100 placeholder:text-zinc-500 resize-none focus:outline-none max-h-32"
+            aria-label="Mensagem para a API de IA"
+            placeholder={enabledProviders.length === 0 ? 'Configure uma API para conversar...' : 'Digite sua mensagem para a IA...'}
+            className="flex-1 min-w-0 bg-transparent py-2 text-sm text-zinc-100 placeholder:text-zinc-500 resize-none focus:outline-none max-h-32"
           />
           <button
             type="submit"
-            disabled={!input.trim() || sending}
+            disabled={!input.trim() || sending || enabledProviders.length === 0}
             aria-label="Enviar mensagem"
             className="w-10 h-10 rounded-full bg-zinc-100 hover:bg-emerald-400 disabled:bg-zinc-700 disabled:text-zinc-400 text-zinc-950 flex items-center justify-center shrink-0 transition-colors"
           >

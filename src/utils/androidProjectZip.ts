@@ -22,7 +22,7 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function buildZipBlob(files: { path: string; content: string }[]): Blob {
+export function buildZipBlob(files: { path: string; content: string }[]): Blob {
   const encoder = new TextEncoder();
   const localParts: Uint8Array[] = [];
   const centralParts: Uint8Array[] = [];

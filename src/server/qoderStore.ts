@@ -1043,13 +1043,25 @@ export async function refreshCatalogFromUpstream(realm: RealmId): Promise<{
 // ---------------------------------------------------------------------------
 
 function isLocalEndpointUrl(baseUrl: string): boolean {
-  return (
-    baseUrl.includes('127.0.0.1') ||
-    baseUrl.includes('localhost') ||
-    baseUrl.includes('0.0.0.0') ||
-    baseUrl.includes('::1') ||
-    /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(baseUrl)
-  );
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return ['localhost', '[::1]', '::1', '0.0.0.0'].includes(host) ||
+      /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)\d/.test(host);
+  } catch { return false; }
+}
+
+function validateProviderInput(input: { provider?: string; baseUrl?: string; apiKey?: string; defaultModel?: string }): void {
+  const preset = PROVIDER_PRESETS.find((p) => p.id === input.provider);
+  if (!preset) throw new Error('Provedor desconhecido; use o preset Customizada.');
+  const baseUrl = (input.baseUrl || preset.baseUrl).trim();
+  let url: URL;
+  try { url = new URL(baseUrl); } catch { throw new Error('Informe uma URL base válida.'); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('A URL base deve ser HTTP/HTTPS, sem senha, consulta ou fragmento.');
+  }
+  if (!isLocalEndpointUrl(baseUrl) && url.protocol !== 'https:') throw new Error('APIs remotas devem usar HTTPS para proteger sua chave.');
+  if (!(input.defaultModel || preset.defaultModel).trim()) throw new Error('Informe o nome do modelo.');
+  if (!input.apiKey?.trim() && preset.requiresKey && !isLocalEndpointUrl(baseUrl)) throw new Error('Informe a API Key do provedor de IA.');
 }
 
 export function addProviderAccount(input: {
@@ -1060,6 +1072,7 @@ export function addProviderAccount(input: {
   defaultModel?: string;
   protocol?: 'openai' | 'anthropic';
 }): SafeProviderSummary {
+  validateProviderInput(input);
   const preset = PROVIDER_PRESETS.find((p) => p.id === input.provider) || PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1];
   const baseUrl = (input.baseUrl || preset.baseUrl).trim().replace(/\/+$/, '');
   const apiKey = (input.apiKey || '').trim();
@@ -1111,6 +1124,9 @@ export function addProviderAccountsBatch(
     protocol?: 'openai' | 'anthropic';
   }>
 ): SafeProviderSummary[] {
+  // Validate the entire batch before persisting any key (avoid half-saved submissions).
+  if (!items.length || items.length > 200) throw new Error('Envie entre 1 e 200 chaves por lote.');
+  for (const item of items) validateProviderInput(item);
   const created: SafeProviderSummary[] = [];
   for (const item of items) {
     created.push(addProviderAccount(item));
@@ -1130,6 +1146,8 @@ export function updateProviderAccount(
 ): SafeProviderSummary | null {
   const prv = state.providers.find((p) => p.id === id);
   if (!prv) return null;
+  validateProviderInput({ provider: prv.provider, baseUrl: patch.baseUrl?.trim() || prv.baseUrl,
+    apiKey: patch.apiKey?.trim() || prv.apiKey, defaultModel: patch.defaultModel?.trim() || prv.defaultModel });
 
   if (typeof patch.name === 'string' && patch.name.trim()) {
     prv.name = patch.name.trim();

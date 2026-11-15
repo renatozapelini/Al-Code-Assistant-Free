@@ -1,6 +1,6 @@
 export type RealmId = 'intl' | 'cn';
 
-export type NavTab = 'hub' | 'chat' | 'scripts' | 'accounts' | 'apis' | 'analytics' | 'models' | 'android';
+export type NavTab = 'options' | 'projects' | 'hub' | 'chat' | 'scripts' | 'accounts' | 'apis' | 'analytics' | 'models' | 'android';
 
 export type ProviderPresetId =
   | 'openai'
@@ -163,6 +163,14 @@ export interface QoderModel {
   thinkingEfforts?: string[];
   contextOptions?: string[];
   disabledReason?: string;
+  source?: 'qoder' | 'openrouter' | 'github' | 'manual';
+  provider?: ProviderPresetId;
+  modelName?: string;
+  baseUrl?: string;
+  protocol?: 'openai' | 'anthropic';
+  pricing?: { prompt?: number; completion?: number; currency: 'USD'; unit: 'token' };
+  supportsTools?: boolean;
+  updatedAt?: number;
 }
 
 export interface GatewayApiKey {
@@ -197,6 +205,8 @@ export interface RequestLogEntry {
   model: string;
   realm: RealmId;
   provider?: string;
+  providerId?: string;
+  providerName?: string;
   failoverFrom?: string;
   accountUid?: string;
   accountNickname?: string;
@@ -261,6 +271,8 @@ export interface ChatMessageItem {
   latencyMs?: number;
   timestamp: number;
   error?: boolean;
+  errorDetail?: string;
+  partial?: boolean;
 }
 
 export interface DiscoveredAiProvider {

@@ -1,41 +1,50 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AccountsPanel } from './components/AccountsPanel';
 import { AiApisPanel } from './components/AiApisPanel';
 import { Analytics } from './components/Analytics';
-import { AndroidSettingsPanel } from './components/AndroidSettingsPanel';
 import { BottomNav } from './components/BottomNav';
-import { HubOverviewPanel } from './components/HubOverviewPanel';
 import { MobileChatPanel } from './components/MobileChatPanel';
 import { ModelsPanel } from './components/ModelsPanel';
 import { ScriptGeneratorPanel } from './components/ScriptGeneratorPanel';
 import { TopBar } from './components/TopBar';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { useCodeProjects } from './hooks/useCodeProjects';
+import { CodeAssistantsPanel } from './components/CodeAssistantsPanel';
+import { ProjectBuildReview } from './components/ProjectBuildReview';
+import { QoderReminderPanel } from './components/QoderReminderPanel';
+import { androidBridge, appFetch } from './utils/androidBridge';
+import { AppUpdatePanel } from './components/AppUpdatePanel';
+import type { CodeProject } from './utils/codeAssistant';
 import type { HubOverview, NavTab, QoderModel } from './types/hub';
 
 export default function App() {
   const isOnline = useOnlineStatus();
-  const [activeTab, setActiveTab] = useState<NavTab>('hub');
+  const [activeTab, setActiveTab] = useState<NavTab>('projects');
+  const [projectPrefill, setProjectPrefill] = useState('');
+  const [standaloneChat, setStandaloneChat] = useState(false);
+  const navigate = useCallback((tab: NavTab) => {
+    setStandaloneChat(false); setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+  const [buildProject, setBuildProject] = useState<CodeProject | null>(null);
   const [overview, setOverview] = useState<HubOverview | null>(null);
   const [models, setModels] = useState<QoderModel[]>([]);
   const [selectedModelId, setSelectedModelId] = useState('auto-failover');
   const [chatPrefillPrompt, setChatPrefillPrompt] = useState('');
-  const [loading, setLoading] = useState(true);
   const [testingProviders, setTestingProviders] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const apiFetch = useCallback((path: string, init?: RequestInit) => {
-    return fetch(path, init);
-  }, []);
+  const apiFetch = useCallback(appFetch, []);
+  const nativeAndroid = Boolean(androidBridge());
+  const code = useCodeProjects(apiFetch);
 
-  const loadHubData = useCallback(async () => {
-    setLoading(true);
+  const loadAppData = useCallback(async () => {
     setFetchError(null);
     try {
       const [ovRes, catRes] = await Promise.all([
-        apiFetch('/api/hub/overview'),
-        apiFetch('/api/hub/catalog'),
+        apiFetch('/api/app/overview'),
+        apiFetch('/api/app/catalog'),
       ]);
-      if (!ovRes.ok) throw new Error(`Falha ao carregar gateway (${ovRes.status})`);
+      if (!ovRes.ok) throw new Error(`Falha ao carregar serviço das assistentes (${ovRes.status})`);
       const ovData = (await ovRes.json()) as HubOverview;
       setOverview(ovData);
 
@@ -44,15 +53,13 @@ export default function App() {
         if (Array.isArray(catData.models)) setModels(catData.models);
       }
     } catch (err) {
-      setFetchError(err instanceof Error ? err.message : 'Erro ao conectar com o gateway.');
-    } finally {
-      setLoading(false);
+      setFetchError(err instanceof Error ? err.message : 'Erro ao conectar com o serviço das assistentes.');
     }
   }, [apiFetch]);
 
   useEffect(() => {
-    void loadHubData();
-  }, [loadHubData]);
+    void loadAppData();
+  }, [loadAppData]);
 
   const handleTestAllProviders = useCallback(async () => {
     const active = overview?.providers.filter((p) => p.enabled) ?? [];
@@ -60,24 +67,23 @@ export default function App() {
     setTestingProviders(true);
     try {
       for (const prv of active) {
-        await apiFetch(`/api/hub/providers/${encodeURIComponent(prv.id)}/test`, {
+        await apiFetch(`/api/app/providers/${encodeURIComponent(prv.id)}/test`, {
           method: 'POST',
         }).catch(() => undefined);
       }
-      await loadHubData();
+      await loadAppData();
     } finally {
       setTestingProviders(false);
     }
-  }, [apiFetch, loadHubData, overview]);
+  }, [apiFetch, loadAppData, overview]);
 
-  const totalActiveEndpoints =
-    (overview?.totals.accountsEnabled ?? 0) + (overview?.totals.providersEnabled ?? 0);
+  const totalActiveEndpoints = overview?.totals.providersEnabled ?? 0;
 
   return (
     <div className="min-h-screen bg-[#090B0E] text-zinc-100 flex flex-col">
       <TopBar
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={navigate}
         onQuickAddApi={() => setActiveTab('apis')}
       />
 
@@ -93,7 +99,7 @@ export default function App() {
             <span>{fetchError}</span>
             <button
               type="button"
-              onClick={() => void loadHubData()}
+              onClick={() => void loadAppData()}
               className="px-3 py-1.5 rounded-lg bg-red-900/50 hover:bg-red-800/60 text-xs font-medium whitespace-nowrap"
             >
               Tentar novamente
@@ -102,100 +108,106 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-24 md:pb-12">
-        {activeTab === 'hub' && (
-          <HubOverviewPanel
-            overview={overview}
-            loading={loading}
-            onRefresh={() => void loadHubData()}
-            onNavigate={setActiveTab}
-          />
-        )}
+      <main className="flex-1 min-w-0 w-full max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-24 md:pb-12">
+        <div className="mb-3"><AppUpdatePanel apiFetch={apiFetch} expanded={activeTab === 'options'} /></div>
+        {activeTab === 'options' && <section className="rounded-xl border border-zinc-800 bg-[#12151B] p-4 space-y-3">
+          <h1 className="text-lg font-semibold">Opções</h1>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {([{ id: 'scripts', label: 'Pré-prompt · detalhar uma ideia' }, { id: 'models', label: 'Modelos de IA' }, { id: 'analytics', label: 'Uso e falhas das APIs' }, { id: 'accounts', label: 'Qoder · lembrete opcional' }] as const).map(item => <button key={item.id} type="button" onClick={() => navigate(item.id)} className="min-h-[48px] text-left text-sm px-3 rounded-lg border border-zinc-800">{item.label}</button>)}
+          </div>
+          <p className="text-xs text-zinc-500">Projetos ficam neste dispositivo. A sincronização de arquivos com GitHub não está ativada; você pode exportar o ZIP pela área Arquivos do projeto. Nenhuma chave ou projeto é publicado automaticamente.</p>
+        </section>}
+        <div hidden={activeTab !== 'projects' && (activeTab !== 'chat' || standaloneChat)}>
+          <CodeAssistantsPanel projects={code.projects} activeId={code.activeId} busyId={code.busyId}
+            providers={overview?.providers ?? []} error={code.error} prefill={projectPrefill}
+            onConsumePrefill={() => setProjectPrefill('')} onCreate={code.create} onSelect={code.select}
+            view={activeTab === 'chat' ? 'chat' : 'home'} onConfigureProviders={code.configureProviders} onExecutionBlocked={code.setExecutionBlocked}
+            onRun={(id) => void code.run(id)} onPause={code.pause} onSaveFile={code.saveFile} onImportFiles={code.saveFiles} onRequestChange={code.requestChange}
+            onExport={code.exportProject} onNavigate={navigate} nativeAndroid={nativeAndroid}
+            onBuild={(id) => { if (!code.busyId) {
+              if (nativeAndroid) code.exportProject(id);
+              else setBuildProject(code.projects.find((p) => p.id === id) ?? null);
+            } }} />
+        </div>
 
-        {activeTab === 'chat' && (
+        {activeTab === 'chat' && standaloneChat && (
           <MobileChatPanel
-            models={models}
+            models={[]}
             providers={overview?.providers ?? []}
             accountsCount={totalActiveEndpoints}
             selectedModelId={selectedModelId}
             onSelectModelId={setSelectedModelId}
             apiFetch={apiFetch}
-            onNavigate={setActiveTab}
-            onMessageCompleted={() => void loadHubData()}
+            onNavigate={navigate}
+            onMessageCompleted={() => void loadAppData()}
             prefillPrompt={chatPrefillPrompt}
             onConsumePrefill={() => setChatPrefillPrompt('')}
           />
         )}
 
-        {activeTab === 'scripts' && (
+        <div hidden={activeTab !== 'scripts'}>
           <ScriptGeneratorPanel
-            models={models}
+            models={[]}
             providers={overview?.providers ?? []}
             accountsCount={totalActiveEndpoints}
             apiFetch={apiFetch}
-            onNavigate={setActiveTab}
-            onSendToChat={(scriptText) => {
-              setChatPrefillPrompt(scriptText);
-              setActiveTab('chat');
+            onNavigate={navigate}
+            onSendToProject={(scriptText) => {
+              setProjectPrefill(scriptText);
+              navigate('projects');
             }}
-            onProvidersChanged={() => void loadHubData()}
-            onScriptCompleted={() => void loadHubData()}
+            onSendToChat={(scriptText) => {
+              setProjectPrefill(scriptText);
+              navigate('projects');
+            }}
+            onProvidersChanged={() => void loadAppData()}
+            onScriptCompleted={() => void loadAppData()}
           />
-        )}
+        </div>
 
-        {activeTab === 'apis' && (
+        <div hidden={activeTab !== 'apis'}>
           <AiApisPanel
             providers={overview?.providers ?? []}
             settings={overview?.settings}
             apiFetch={apiFetch}
-            onProvidersChanged={() => void loadHubData()}
+            onProvidersChanged={() => void loadAppData()}
           />
-        )}
+        </div>
 
         {activeTab === 'analytics' && (
           <Analytics
             overview={overview}
-            onNavigate={setActiveTab}
+            onNavigate={navigate}
             onTestAllProviders={handleTestAllProviders}
             testingProviders={testingProviders}
           />
         )}
 
-        {activeTab === 'accounts' && (
-          <AccountsPanel
-            accounts={overview?.accounts ?? []}
-            providersCount={overview?.totals.providersTotal ?? 0}
-            apiFetch={apiFetch}
-            onAccountsChanged={() => void loadHubData()}
-            onNavigate={setActiveTab}
-          />
-        )}
 
         {activeTab === 'models' && (
           <ModelsPanel
             models={models}
             apiFetch={apiFetch}
             onModelsUpdated={setModels}
+            onNavigate={navigate}
+            onProvidersChanged={() => void loadAppData()}
             onTestModelInChat={(modelId) => {
               setSelectedModelId(modelId);
-              setActiveTab('chat');
+              setStandaloneChat(true); setActiveTab('chat');
+              window.scrollTo(0, 0);
             }}
           />
         )}
 
-        {activeTab === 'android' && overview && (
-          <AndroidSettingsPanel
-            settings={overview.settings}
-            apiKeys={overview.apiKeys}
-            apiFetch={apiFetch}
-            onSettingsChanged={() => void loadHubData()}
-          />
-        )}
+        {activeTab === 'accounts' && <QoderReminderPanel />}
       </main>
 
+      {buildProject && <ProjectBuildReview key={`${buildProject.id}-${buildProject.revision}`} project={buildProject}
+        apiFetch={apiFetch} onClose={() => setBuildProject(null)}
+        onResult={(result) => code.recordBuild(buildProject.id, buildProject.revision, result)} />}
       <BottomNav
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={navigate}
         accountsCount={overview?.totals.accountsEnabled ?? 0}
         providersCount={overview?.totals.providersEnabled ?? 0}
       />

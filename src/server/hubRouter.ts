@@ -1,316 +1,137 @@
 import express from 'express';
-import type { ProviderPresetId, RealmId } from '../types/hub.ts';
+import type { ProviderPresetId } from '../types/hub.ts';
 import { PROVIDER_PRESETS } from './providerPresets.ts';
-import { getCatalog } from './qoderCatalog.ts';
-import {
-  handleAnthropicMessages,
-  handleChatCompletions,
-  handleResponsesApi,
-} from './qoderProxy.ts';
+import { getExternalCatalog } from './externalCatalog.ts';
+import { createProjectBuildRouter } from './projectBuild.ts';
+import { handleChatCompletions } from './multiAiProxy.ts';
 import {
   addDiscoveredProvider,
   addProviderAccount,
   addProviderAccountsBatch,
-  claimDailyCheckin,
-  createApiKey,
-  deleteAccount,
-  deleteApiKey,
   deleteProviderAccount,
   discoverCodingProviders,
-  getAllRawAccounts,
   getAllRawProviders,
   getOverview,
   getSettings,
-  importAccountsJson,
-  importPatAccount,
   moveProviderPriority,
-  pollOAuthLogin,
-  refreshAccountToken,
-  refreshCatalogFromUpstream,
-  startOAuthLogin,
-  syncAccountQuota,
   testProviderAccount,
-  toggleAccount,
   toggleProviderAccount,
   updateProviderAccount,
   updateSettings,
-  validateBearerKey,
 } from './qoderStore.ts';
 
-export function createHubRouter(): express.Router {
+export function createAssistantRouter(): express.Router {
   const router = express.Router();
 
-  // CORS for OpenAI / Anthropic / Responses protocol routes
-  router.use(['/v1', '/health', '/ping', '/credits'], (req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Authorization, Content-Type, X-Api-Key, X-Realm, X-Session-Id, Anthropic-Version'
-    );
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    if (req.method === 'OPTIONS') {
-      res.status(204).end();
+  // A random web page must not be able to alter the local key store.
+  router.use('/api/app', (req, res, next) => {
+    const origin = req.header('origin');
+    if ((origin && origin !== `${req.protocol}://${req.get('host')}`) || req.header('sec-fetch-site') === 'cross-site') {
+      res.status(403).json({ error: { message: 'Gerenciamento permitido apenas pela interface local.' } });
       return;
     }
     next();
   });
 
-  // Public Health & Protocol Endpoints
-  router.get(['/ping', '/healthz', '/livez', '/readyz'], (_req, res) => {
-    res.type('text/plain').send('pong');
-  });
+  router.use('/api/app/project-build', createProjectBuildRouter());
 
-  router.get('/health', (_req, res) => {
-    const overview = getOverview();
-    res.json({
-      ok: true,
-      service: 'qoder2api-hub-android',
-      version: overview.version,
-      uptime_sec: overview.uptimeSec,
-      realm: overview.defaultRealm,
-      auto_realm: overview.autoRealm,
-      accounts: overview.totals.accountsTotal,
-      accounts_enabled: overview.totals.accountsEnabled,
-      credits_remain: overview.totals.creditsRemain,
-      risk: overview.risk,
-    });
+  // Old state stays on disk; public gateway and account routes are not mounted.
+  router.use(["/v1", "/credits", "/ping", "/healthz", "/livez", "/readyz", "/api/hub"], (_req, res) => {
+    res.status(404).json({ error: { type: "not_found", message: "Esta edição não oferece gateway. Use as assistentes dentro do aplicativo." } });
   });
-
-  router.get('/credits/summary', (req, res) => {
-    const auth = validateBearerKey(req.header('authorization'), req.header('x-api-key'));
-    if (!auth.ok) {
-      res.status(401).json({ error: auth.error });
-      return;
-    }
-    const overview = getOverview();
-    res.json({
-      totals: {
-        remain: overview.totals.creditsRemain,
-        used: overview.totals.creditsUsed,
-        size: overview.totals.creditsSize,
-        accounts: overview.totals.accountsTotal,
-      },
-      accounts: overview.accounts.map((a) => ({
-        uid: a.uid,
-        nickname: a.nickname,
-        realm: a.realm,
-        credits_remain: a.creditsRemain,
-        credits_used: a.creditsUsed,
-        credits_size: a.creditsSize,
-      })),
-    });
-  });
-
-  router.get('/v1/models', (req, res) => {
-    const realmParam = String(req.query.realm || '').toLowerCase();
-    const realm = realmParam === 'cn' || realmParam === 'intl' ? (realmParam as RealmId) : undefined;
-    const models = getCatalog(realm);
-    const externalProviders = getAllRawProviders().filter((p) => p.enabled);
-
-    res.json({
-      object: 'list',
-      data: [
-        {
-          id: 'auto-failover',
-          object: 'model',
-          created: 1735689600,
-          owned_by: 'qoder2api-hub',
-          qoder_key: 'auto-failover',
-          realms: ['intl', 'cn'],
-          price_factor: 0,
-          context_length: 200000,
-          max_output_tokens: 32768,
-          supports_vision: true,
-          supports_reasoning: true,
-        },
-        ...models.map((m) => ({
-          id: m.id,
-          object: 'model',
-          created: 1735689600,
-          owned_by: 'qoder',
-          qoder_key: m.key,
-          realms: m.availableRealms,
-          price_factor: m.priceFactor,
-          context_length: m.maxInputTokens,
-          max_output_tokens: m.maxOutputTokens,
-          supports_vision: m.isVl,
-          supports_reasoning: m.isReasoning,
-        })),
-        ...externalProviders.map((p) => ({
-          id: `provider:${p.id}`,
-          object: 'model',
-          created: 1735689600,
-          owned_by: p.provider,
-          qoder_key: p.defaultModel,
-          realms: ['intl'],
-          price_factor: 0,
-          context_length: 128000,
-          max_output_tokens: 16384,
-          supports_vision: false,
-          supports_reasoning: true,
-        })),
-      ],
-    });
-  });
-
-  router.post('/v1/chat/completions', (req, res) => {
-    const auth = validateBearerKey(req.header('authorization'), req.header('x-api-key'));
-    if (!auth.ok) {
-      res.status(401).json({ error: { message: auth.error, type: 'authentication_error' } });
-      return;
-    }
-    void handleChatCompletions(req, res, 'openai-chat');
-  });
-
-  router.post('/v1/responses', (req, res) => {
-    const auth = validateBearerKey(req.header('authorization'), req.header('x-api-key'));
-    if (!auth.ok) {
-      res.status(401).json({ error: { message: auth.error, type: 'authentication_error' } });
-      return;
-    }
-    void handleResponsesApi(req, res);
-  });
-
-  router.post('/v1/messages', (req, res) => {
-    const auth = validateBearerKey(req.header('authorization'), req.header('x-api-key'));
-    if (!auth.ok) {
-      res.status(401).json({ type: 'error', error: { type: 'authentication_error', message: auth.error } });
-      return;
-    }
-    void handleAnthropicMessages(req, res);
-  });
+  router.get("/health", (_req, res) => res.json({ ok: true, service: "code-assistants", gateway: false }));
+  const appSettings = () => ({ ...getSettings(), autoRealm: false, autoCheckinEnabled: false,
+    requireApiKey: false, fallbackToQoderZeroX: false, autoRefreshTokens: false });
 
   // Hub Management API
-  router.get('/api/hub/overview', (_req, res) => {
-    res.json(getOverview());
+  router.get('/api/app/overview', (_req, res) => {
+    const overview = getOverview();
+    res.json({ ...overview, accounts: [], apiKeys: [], settings: appSettings(),
+      totals: { ...overview.totals, accountsTotal: 0, accountsEnabled: 0, accountsInCooldown: 0,
+        creditsRemain: 0, creditsUsed: 0, creditsSize: 0 },
+      recentLogs: overview.recentLogs.filter((log) => !log.accountUid) });
   });
 
-  router.get('/api/hub/catalog', (req, res) => {
-    const r = String(req.query.realm || '').toLowerCase();
-    const realm = r === 'cn' || r === 'intl' ? (r as RealmId) : undefined;
-    res.json({ models: getCatalog(realm) });
+  router.get('/api/app/catalog', (req, res) => {
+    res.json(getExternalCatalog().snapshot());
   });
 
-  router.post('/api/hub/catalog/refresh', async (req, res) => {
-    const realm: RealmId = req.body?.realm === 'cn' ? 'cn' : 'intl';
-    const result = await refreshCatalogFromUpstream(realm);
-    res.json({ ...result, models: getCatalog() });
+  router.get('/api/app/catalog/providers', (_req, res) => {
+    res.json(getExternalCatalog().snapshot());
   });
 
-  router.post('/api/hub/oauth/start', (req, res) => {
-    const realm: RealmId = req.body?.realm === 'cn' ? 'cn' : 'intl';
-    const session = startOAuthLogin(realm);
-    res.json(session);
-  });
-
-  router.get('/api/hub/oauth/poll', async (req, res) => {
-    const state = String(req.query.state || '');
-    const result = await pollOAuthLogin(state);
-    res.json(result);
-  });
-
-  router.post('/api/hub/accounts/pat', async (req, res) => {
-    try {
-      const pat = String(req.body?.pat || '');
-      const realm: RealmId = req.body?.realm === 'cn' ? 'cn' : 'intl';
-      const account = await importPatAccount(pat, realm);
-      res.json({ ok: true, account });
-    } catch (err) {
-      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'PAT inválido' });
-    }
-  });
-
-  router.post('/api/hub/accounts/import', (req, res) => {
-    const items = Array.isArray(req.body?.accounts)
-      ? req.body.accounts
-      : Array.isArray(req.body)
-        ? req.body
-        : [];
-    if (items.length === 0) {
-      res.status(400).json({ ok: false, error: 'Envie um array JSON válido de contas.' });
+  router.post('/api/app/catalog/providers/refresh', async (req, res) => {
+    const provider = req.body?.provider;
+    if (provider !== 'openrouter' && provider !== 'github') {
+      res.status(400).json({ ok: false, error: 'provider deve ser openrouter ou github.' });
       return;
     }
-    const result = importAccountsJson(items);
-    res.json({ ok: true, ...result });
-  });
-
-  router.get('/api/hub/accounts/export', (_req, res) => {
-    const accounts = getAllRawAccounts();
-    res.setHeader('Content-Disposition', 'attachment; filename="qoder2api-accounts.json"');
-    res.json(accounts);
-  });
-
-  router.post('/api/hub/accounts/:uid/refresh', async (req, res) => {
     try {
-      const account = await refreshAccountToken(req.params.uid);
-      res.json({ ok: true, account });
+      const result = await getExternalCatalog().refresh(provider);
+      res.status(result.ok ? 200 : 503).json(result);
     } catch (err) {
-      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Erro ao atualizar conta' });
+      res.status(503).json({ ok: false, error: err instanceof Error ? err.message : 'Catálogo indisponível.' });
     }
   });
 
-  router.post('/api/hub/accounts/:uid/quota', async (req, res) => {
+  router.post('/api/app/catalog/manual', (req, res) => {
     try {
-      const account = await syncAccountQuota(req.params.uid);
-      res.json({ ok: true, account });
+      const result = getExternalCatalog().addManual(req.body);
+      res.json({ ok: true, ...result });
     } catch (err) {
-      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Erro ao consultar créditos' });
+      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Entrada manual inválida.' });
     }
   });
 
-  router.post('/api/hub/accounts/:uid/checkin', async (req, res) => {
-    try {
-      const result = await claimDailyCheckin(req.params.uid);
-      res.json(result);
-    } catch (err) {
-      res.status(400).json({ ok: false, message: err instanceof Error ? err.message : 'Erro no check-in' });
+  router.post('/api/app/settings', (req, res) => {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
+      || Object.keys(req.body).some((key) => key !== "autoFailoverEnabled") || typeof req.body.autoFailoverEnabled !== "boolean") {
+      res.status(400).json({ error: { message: "Somente a troca automática entre APIs pode ser configurada nesta edição." } }); return;
     }
+    updateSettings({ autoFailoverEnabled: req.body.autoFailoverEnabled });
+    res.json({ ok: true, settings: appSettings() });
   });
 
-  router.post('/api/hub/accounts/:uid/toggle', (req, res) => {
-    const account = toggleAccount(req.params.uid);
-    if (!account) {
-      res.status(404).json({ ok: false, error: 'Conta não encontrada.' });
-      return;
+  router.post("/api/app/assistant/complete", (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      res.status(400).json({ error: { message: "Pedido de assistente inválido." } }); return;
     }
-    res.json({ ok: true, account });
+    const providers = getAllRawProviders();
+    const known = new Set(providers.map((provider) => provider.id));
+    const scope: unknown = body.assistant_provider_ids;
+    if (scope !== undefined && (!Array.isArray(scope) || !scope.length || scope.length > 100
+      || scope.some((id) => typeof id !== "string" || !known.has(id)) || new Set(scope).size !== scope.length)) {
+      res.status(400).json({ error: { message: "Selecione uma fila válida de APIs cadastradas." } }); return;
+    }
+    const model = String(body.model || "auto-failover");
+    if (model !== "auto-failover" && !(model.startsWith("provider:") && known.has(model.slice(9)))
+      && !providers.some((provider) => provider.defaultModel.toLowerCase() === model.toLowerCase())) {
+      res.status(400).json({ error: { message: "O modelo precisa estar configurado em uma das suas APIs." } }); return;
+    }
+    if (!providers.some((provider) => provider.enabled)) {
+      res.status(503).json({ error: { message: "Nenhuma API habilitada. Cadastre suas assistentes na aba APIs IA." } }); return;
+    }
+    const selected = scope as string[] | undefined;
+    if (selected && model.startsWith("provider:") && !selected.includes(model.slice(9))) {
+      res.status(400).json({ error: { message: "A assistente selecionada não pertence à fila deste projeto." } }); return;
+    }
+    // Always scope chat/blueprints to external APIs. Project turns pass one ID;
+    // the runner owns handoff and checkpoint continuity, never this transport.
+    req.body = { ...body, model, assistant_provider_ids: selected ?? providers.map((provider) => provider.id) };
+    void handleChatCompletions(req, res, "android-chat");
   });
 
-  router.delete('/api/hub/accounts/:uid', (req, res) => {
-    const removed = deleteAccount(req.params.uid);
-    res.json({ ok: removed });
-  });
-
-  router.post('/api/hub/settings', (req, res) => {
-    const next = updateSettings(req.body || {});
-    res.json({ ok: true, settings: next });
-  });
-
-  router.post('/api/hub/keys', (req, res) => {
-    const name = String(req.body?.name || 'Chave Android');
-    const realmLock = req.body?.realmLock === 'cn' || req.body?.realmLock === 'intl' ? req.body.realmLock : 'auto';
-    const entry = createApiKey(name, realmLock);
-    res.json({ ok: true, key: entry });
-  });
-
-  router.delete('/api/hub/keys/:id', (req, res) => {
-    res.json({ ok: deleteApiKey(req.params.id) });
-  });
-
-  router.post('/api/hub/chat', (req, res) => {
-    void handleChatCompletions(req, res, 'android-chat');
-  });
-
-  router.get('/api/hub/settings', (_req, res) => {
-    res.json(getSettings());
+  router.get('/api/app/settings', (_req, res) => {
+    res.json(appSettings());
   });
 
   // Multi-Provider AI Code Assistant Failover Pool
-  router.get('/api/hub/providers/presets', (_req, res) => {
+  router.get('/api/app/providers/presets', (_req, res) => {
     res.json({ presets: PROVIDER_PRESETS });
   });
 
-  router.post('/api/hub/providers', (req, res) => {
+  router.post('/api/app/providers', (req, res) => {
     try {
       const provider = String(req.body?.provider || 'custom') as ProviderPresetId;
       const created = addProviderAccount({
@@ -327,7 +148,7 @@ export function createHubRouter(): express.Router {
     }
   });
 
-  router.post('/api/hub/providers/batch', (req, res) => {
+  router.post('/api/app/providers/batch', (req, res) => {
     try {
       const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
       if (rawItems.length === 0) {
@@ -350,7 +171,7 @@ export function createHubRouter(): express.Router {
     }
   });
 
-  router.patch('/api/hub/providers/:id', (req, res) => {
+  router.patch('/api/app/providers/:id', (req, res) => {
     const updated = updateProviderAccount(req.params.id, {
       name: typeof req.body?.name === 'string' ? req.body.name : undefined,
       baseUrl: typeof req.body?.baseUrl === 'string' ? req.body.baseUrl : undefined,
@@ -365,7 +186,7 @@ export function createHubRouter(): express.Router {
     res.json({ ok: true, provider: updated });
   });
 
-  router.post('/api/hub/providers/:id/toggle', (req, res) => {
+  router.post('/api/app/providers/:id/toggle', (req, res) => {
     const updated = toggleProviderAccount(req.params.id);
     if (!updated) {
       res.status(404).json({ ok: false, error: 'Provedor não encontrado.' });
@@ -374,13 +195,13 @@ export function createHubRouter(): express.Router {
     res.json({ ok: true, provider: updated });
   });
 
-  router.post('/api/hub/providers/:id/priority', (req, res) => {
+  router.post('/api/app/providers/:id/priority', (req, res) => {
     const dir = req.body?.direction === 'up' ? 'up' : 'down';
     const providers = moveProviderPriority(req.params.id, dir);
     res.json({ ok: true, providers });
   });
 
-  router.post('/api/hub/providers/:id/test', async (req, res) => {
+  router.post('/api/app/providers/:id/test', async (req, res) => {
     try {
       const result = await testProviderAccount(req.params.id);
       res.json(result);
@@ -389,7 +210,7 @@ export function createHubRouter(): express.Router {
     }
   });
 
-  router.post('/api/hub/providers/discover', async (_req, res) => {
+  router.post('/api/app/providers/discover', async (_req, res) => {
     try {
       const result = await discoverCodingProviders();
       res.json({ ok: true, ...result });
@@ -401,7 +222,7 @@ export function createHubRouter(): express.Router {
     }
   });
 
-  router.post('/api/hub/providers/discover/add', (req, res) => {
+  router.post('/api/app/providers/discover/add', (req, res) => {
     try {
       const rawItems = Array.isArray(req.body?.items)
         ? req.body.items
@@ -432,9 +253,13 @@ export function createHubRouter(): express.Router {
     }
   });
 
-  router.delete('/api/hub/providers/:id', (req, res) => {
+  router.delete('/api/app/providers/:id', (req, res) => {
     res.json({ ok: deleteProviderAccount(req.params.id) });
   });
 
+  router.use((err: Error, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) { next(err); return; }
+    res.status(400).json({ error: { type: 'invalid_request_error', message: err.message } });
+  });
   return router;
 }

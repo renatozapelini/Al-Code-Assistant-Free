@@ -168,7 +168,7 @@ interface UpstreamCallResult {
   externalProvider?: ExternalProviderAccount;
 }
 
-async function tryQoderModel(
+export async function tryQoderModel(
   modelKey: string,
   displayName: string,
   realm: RealmId,
@@ -488,7 +488,7 @@ async function callUpstreamWithFailover(
   );
 }
 
-async function* iterateUpstreamAsOpenAiChunks(
+export async function* iterateUpstreamAsOpenAiChunks(
   upstream: UpstreamCallResult
 ): AsyncGenerator<Record<string, unknown>> {
   const reader = upstream.stream.getReader();

@@ -1,12 +1,11 @@
-import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import zlib from 'node:zlib';
 import { ensureFreshDist } from './distHelper.ts';
-
-const execFileAsync = promisify(execFile);
+import { buildNativeAndroid } from './native-build.ts';
+import { PROVIDER_PRESETS } from './providerPresets.ts';
 
 interface ZipInputEntry {
   name: string;
@@ -239,12 +238,10 @@ export async function buildSignedAndroidApk(): Promise<string> {
   apkBuildInFlight = (async () => {
     const rootDir = process.cwd();
     const templateDir = path.join(rootDir, 'src', 'server', 'apk-template');
-    const outApk = '/tmp/Qoder2API-Hub.apk';
+    const outApk = path.join(os.tmpdir(), 'Code-Assistants.apk');
 
-    if (!fs.existsSync(path.join(templateDir, 'classes.dex'))) {
-      throw new Error('Template Android (classes.dex) não encontrado no servidor.');
-    }
-
+    // Always compile the current native engine; never ship the legacy DEX with a newer UI.
+    const native = await buildNativeAndroid();
     const distDir = await ensureFreshDist();
 
     const keyInfo = JSON.parse(
@@ -254,26 +251,17 @@ export async function buildSignedAndroidApk(): Promise<string> {
 
     const entries: ZipInputEntry[] = [];
 
-    // 1. AndroidManifest.xml, classes.dex, resources.arsc (4-byte aligned, uncompressed)
-    entries.push({
-      name: 'AndroidManifest.xml',
-      data: fs.readFileSync(path.join(templateDir, 'AndroidManifest.xml')),
-      compress: true,
-    });
-    entries.push({
-      name: 'classes.dex',
-      data: fs.readFileSync(path.join(templateDir, 'classes.dex')),
-      compress: true,
-    });
-    entries.push({
-      name: 'resources.arsc',
-      data: fs.readFileSync(path.join(templateDir, 'resources.arsc')),
-      compress: false,
-      align4: true,
-    });
+    // Compiled current manifest, engine and resources (Android R+ alignment).
+    entries.push({ name: 'AndroidManifest.xml',
+      data: fs.readFileSync(path.join(native.directory, 'AndroidManifest.xml')), compress: true });
+    for (const dex of native.dexFiles) {
+      entries.push({ name: path.basename(dex), data: fs.readFileSync(dex), compress: true });
+    }
+    const resources = path.join(native.directory, 'resources.arsc');
+    if (fs.existsSync(resources)) entries.push({ name: 'resources.arsc',
+      data: fs.readFileSync(resources), compress: false, align4: true });
 
-    // 2. Compiled res/
-    const resDir = path.join(templateDir, 'res');
+    const resDir = path.join(native.directory, 'res');
     if (fs.existsSync(resDir)) {
       const resFiles: { rel: string; abs: string }[] = [];
       walkDir(resDir, resDir, resFiles);
@@ -288,10 +276,15 @@ export async function buildSignedAndroidApk(): Promise<string> {
       }
     }
 
-    // 3. Built React UI inside assets/www/
+    entries.push({ name: 'assets/provider-presets.json',
+      data: Buffer.from(JSON.stringify(PROVIDER_PRESETS), 'utf8'), compress: true });
+
+    // Built React UI inside assets/www/
     const distFiles: { rel: string; abs: string }[] = [];
     walkDir(distDir, distDir, distFiles);
     for (const df of distFiles) {
+      // Design/reference attachments are not application assets and must not ship.
+      if (df.rel.startsWith('assets/aistudio/')) continue;
       entries.push({
         name: `assets/www/${df.rel}`,
         data: fs.readFileSync(df.abs),

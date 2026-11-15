@@ -7,3 +7,5 @@ coverage/
 .env*
 !.env.example
 .qoder2api-data/
+.win-build/
+.android-build/
