@@ -173,8 +173,11 @@ describe('AiApisPanel: apresentação segura', () => {
       expect(href.startsWith('https://')).toBe(true);
       expect(target).toBe('_self');
     }
-    expect(html).toContain('Registrar / obter chave (Google Gemini)');
-    expect(html).toContain('Acesso pelo site oficial; não configurado como API de inferência neste app');
+    expect(html).toContain('Registrar / obter chave (OpenAI)');
+    expect(html).toContain('Mostrar opções com cota grátis');
+    expect(html).not.toContain('Registrar / obter chave (Google Gemini)');
+    expect(html).toContain('Qoder · assistente usado no desenvolvimento');
+    expect(html).toContain('não é tratado aqui como API de inferência');
     expect(html).toContain('href="https://qoder.com"');
     expect(html.slice(html.indexOf('<form'), html.indexOf('</form>'))).not.toContain('qoder.com');
     expect(PROVIDER_PRESETS.some((preset) => String(preset.id) === 'qoder')).toBe(false);
@@ -182,8 +185,8 @@ describe('AiApisPanel: apresentação segura', () => {
   test('API habilitada não alega conexão testada e preserva prefixo mascarado', () => {
     const html = render([saved]);
     expect(html).toContain('habilitadas (não comprova conexão)');
-    expect(html).toContain('Habilitada (#1)');
-    expect(html).not.toContain('Pronta (Principal)');
+    expect(html).toContain('Ainda não testada');
+    expect(html).not.toContain('Funcionando');
     expect(html).toContain('sk-or-***');
     expect(html).toContain('Testar APIs habilitadas');
     expect(html).toContain('em Projetos, escolha quais APIs compõem a fila');

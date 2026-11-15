@@ -90,7 +90,7 @@ public final class Gateway {
         } finally { readTimeout.cancel(false); if (totalTimeout != null) totalTimeout.cancel(false); clients.remove(socket); }
     }
     private static final class Request {
-        String method, path; int length;
+        String method, path, query = ""; int length;
         final Map<String,String> headers = new LinkedHashMap<>();
     }
     private static Request headers(InputStream in) throws IOException {
@@ -100,6 +100,7 @@ public final class Gateway {
         Request r = new Request(); r.method = parts[0]; String target = parts[1];
         if (!target.startsWith("/") || target.startsWith("//") || target.contains("#") || target.matches(".*[\\x00-\\x20\\x7f\\\\].*")) throw new Failure(400, "invalid_http", "Invalid local request target");
         int query = target.indexOf('?'); r.path = query < 0 ? target : target.substring(0, query);
+        r.query = query < 0 ? "" : target.substring(query + 1);
         // Reject encoded separators and dot paths rather than accidentally treating an API as SPA.
         String decoded;
         try { decoded = URLDecoder.decode(r.path.replace("+", "%2B"), "UTF-8"); }
@@ -166,7 +167,8 @@ public final class Gateway {
         if (!appPath(p)) return asset(r);
         if (p.equals("/api/app/overview") && method.equals("GET")) return json(overview());
         if (p.equals("/api/app/updates") && method.equals("GET")) {
-            Map<String,Object> result = updates.check(); return new Reply(yes(result.get("ok")) ? 200 : 503, result);
+            if (!r.query.isEmpty() && !r.query.equals("force=1")) throw new Failure(400, "invalid_query", "Only force=1 is accepted on the update check");
+            Map<String,Object> result = updates.check(r.query.equals("force=1")); return new Reply(yes(result.get("ok")) ? 200 : 503, result);
         }
         if ((p.equals("/api/app/catalog") || p.equals("/api/app/catalog/providers")) && method.equals("GET")) return json(catalog.snapshot());
         if (p.equals("/api/app/providers/presets") && method.equals("GET")) return json(obj("presets", state.presets));
@@ -290,10 +292,15 @@ public final class Gateway {
     private static List<String> strings(List<Object> values) { List<String> out = new ArrayList<>(); for (Object v : values) out.add(str(v)); return out; }
     private Map<String,Object> attempt(Map<String,Object> p, Map<String,Object> canonical, int timeout) throws IOException {
         boolean anthropic = "anthropic".equals(p.get("protocol"));
-        Map<String,Object> request = Protocol.upstream(canonical, str(p.get("defaultModel")), anthropic, str(p.get("baseUrl")));
-        String url = HubState.baseUrl(p.get("baseUrl")) + (anthropic ? "/messages" : "/chat/completions");
-        Map<String,Object> payload = fetch(url, request, str(p.get("apiKey")), anthropic, timeout, BODY_LIMIT, upstreams);
-        try { return Protocol.completion(payload, anthropic, str(p.get("defaultModel"))); }
+        boolean gemini = "gemini".equals(p.get("provider"));
+        Map<String,Object> request = gemini
+            ? Protocol.geminiUpstream(canonical)
+            : Protocol.upstream(canonical, str(p.get("defaultModel")), anthropic, str(p.get("baseUrl")));
+        String url = gemini
+            ? HubState.baseUrl(p.get("baseUrl")) + "/models/" + URLEncoder.encode(str(p.get("defaultModel")), "UTF-8").replace("+", "%20") + ":generateContent"
+            : HubState.baseUrl(p.get("baseUrl")) + (anthropic ? "/messages" : "/chat/completions");
+        Map<String,Object> payload = fetch(url, request, str(p.get("apiKey")), gemini ? "gemini" : anthropic ? "anthropic" : "bearer", timeout, BODY_LIMIT, upstreams);
+        try { return gemini ? Protocol.geminiCompletion(payload, str(p.get("defaultModel"))) : Protocol.completion(payload, anthropic, str(p.get("defaultModel"))); }
         catch (Failure e) { throw new Failure(502, e.type, "Provider returned an invalid or incomplete completion"); }
         catch (RuntimeException e) { throw new Failure(502, "upstream_error", "Provider returned malformed completion data"); }
     }
@@ -326,17 +333,21 @@ public final class Gateway {
         catch (CharacterCodingException e) { throw new Failure(400, "invalid_encoding", "Invalid UTF-8 JSON"); }
     }
     static Map<String,Object> fetchJson(String url, Map<String,Object> payload, String key, boolean anthropic, int timeout, int max) throws IOException {
-        return fetch(url, payload, key, anthropic, timeout, max, null);
+        return fetch(url, payload, key, anthropic ? "anthropic" : "bearer", timeout, max, null);
     }
-    private static Map<String,Object> fetch(String url, Map<String,Object> payload, String key, boolean anthropic, int timeout, int max, Set<HttpURLConnection> active) throws IOException {
+    private static Map<String,Object> fetch(String url, Map<String,Object> payload, String key, String credentialMode, int timeout, int max, Set<HttpURLConnection> active) throws IOException {
         HttpURLConnection c = null; ScheduledFuture<?> deadline = null;
         try {
+            boolean anthropic = credentialMode.equals("anthropic"), gemini = credentialMode.equals("gemini");
             URL target = new URL(url);
             if (!arr("http", "https").contains(target.getProtocol()) || target.getUserInfo() != null || target.getRef() != null || key.matches("(?s).*[\\x00-\\x1f\\x7f].*")) throw new Failure(400, "invalid_endpoint", "Invalid provider endpoint or credential format");
             c = (HttpURLConnection)target.openConnection(); c.setInstanceFollowRedirects(false); c.setUseCaches(false);
             c.setConnectTimeout(Math.min(10000, timeout)); c.setReadTimeout(Math.min(15000, timeout));
             c.setRequestProperty("Accept", payload == null ? "application/json" : "application/json, text/event-stream"); c.setRequestProperty("Accept-Encoding", "identity");
-            if (!key.isEmpty() && !key.equals("local-no-key")) c.setRequestProperty(anthropic ? "x-api-key" : "Authorization", anthropic ? key : "Bearer " + key);
+            if (!key.isEmpty() && !key.equals("local-no-key")) {
+                if (gemini) c.setRequestProperty("x-goog-api-key", key);
+                else c.setRequestProperty(anthropic ? "x-api-key" : "Authorization", anthropic ? key : "Bearer " + key);
+            }
             if (anthropic) c.setRequestProperty("anthropic-version", "2023-06-01");
             final HttpURLConnection connection = c; if (active != null) active.add(c);
             deadline = DEADLINES.schedule(connection::disconnect, timeout, TimeUnit.MILLISECONDS);

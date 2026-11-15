@@ -27,7 +27,7 @@ public final class AppUpdatesTest {
     private static Map<String,Object> asset(Map<String,Object> release) { return map(list(release.get("assets")).get(0)); }
     private static Map<String,Object> contract(Map<String,Object> result) {
         check(result.get("ok") instanceof Boolean, "ok boolean");
-        eq(result.get("currentVersion"), "3.1.0", "configured current version");
+        eq(result.get("currentVersion"), "3.2.0", "configured current version");
         check(result.get("available") instanceof Boolean, "available boolean");
         check(result.get("checkedAt") instanceof Number, "checkedAt timestamp");
         check(!str(result.get("message")).isEmpty(), "message explains outcome");
@@ -61,20 +61,20 @@ public final class AppUpdatesTest {
         eq(result.get("available"), true, "newer available");
         eq(result.get("downloadUrl"), download("3.10.1"), "only browser download URL");
         eq(result.get("releaseUrl"), BASE + "tag/v3.10.1", "canonical generated release URL");
-        eq(inspect(arr(release("3.1.9"), release("3.1.10"))).get("latestVersion"), "3.1.10", "numeric patch selection");
+        eq(inspect(arr(release("3.2.9"), release("3.3.10"))).get("latestVersion"), "3.3.10", "numeric patch selection");
         String huge = "3.123456789012345678901234567890.0";
         eq(inspect(arr(release("3.999.999"), release(huge))).get("latestVersion"), "3.999.999", "oversized semver rejected consistently with UI");
         eq(inspect(arr(release("3.99.99"), release("4.0.0"))).get("latestVersion"), "4.0.0", "future major version available");
-        result = inspect(arr(release("3.1.0")));
+        result = inspect(arr(release("3.2.0")));
         eq(result.get("ok"), true, "current APK validated"); eq(result.get("available"), false, "equal version not an update");
         check(!result.containsKey("downloadUrl"), "no current-version download prompt");
         check(str(result.get("message")).contains("Somente o APK"), "current outcome scoped to validated list, not falsely up to date");
         noApk(arr(release("3.0.99"))); noApk(arr(release("2.99.99"))); noApk(arr(draft, pre));
-        for (String tag : new String[]{"3.1.1", "v3.01.1", "v3.1.01", "v3.1.1-beta", "v3.1.1+build", "v3.1", "v3.-1.0", "v3.1.1/../x", "v3.1.1%2f..", "v3.1.1?x", "v3.1.1\n"}) {
-            Map<String,Object> bad = release("3.1.1"); bad.put("tag_name", tag); noApk(arr(bad));
+        for (String tag : new String[]{"3.3.1", "v3.01.1", "v3.2.01", "v3.3.1-beta", "v3.3.1+build", "v3.1", "v3.-1.0", "v3.3.1/../x", "v3.3.1%2f..", "v3.3.1?x", "v3.3.1\n"}) {
+            Map<String,Object> bad = release("3.3.1"); bad.put("tag_name", tag); noApk(arr(bad));
         }
         for (String flag : new String[]{"draft", "prerelease"}) {
-            Map<String,Object> bad = release("3.1.1"); bad.remove(flag); noApk(arr(bad));
+            Map<String,Object> bad = release("3.3.1"); bad.remove(flag); noApk(arr(bad));
             bad.put(flag, "false"); noApk(arr(bad));
         }
         rejected(new Fake("[]"), "empty_releases");
@@ -82,33 +82,33 @@ public final class AppUpdatesTest {
 
     private static void assetsAndUrls() throws Exception {
         for (Object assets : new Object[]{null, arr(), obj(), "assets", arr(null, 1, obj("name", "other.apk"))}) {
-            Map<String,Object> bad = release("3.1.1"); bad.put("assets", assets); noApk(arr(bad));
+            Map<String,Object> bad = release("3.3.1"); bad.put("assets", assets); noApk(arr(bad));
         }
-        Map<String,Object> missing = release("3.1.1"); missing.remove("assets"); noApk(arr(missing));
-        for (String name : new String[]{"app.apk", "Ai-v3.1.1.apk", "Code-Assistants.apk", "Code-Assistants-v3.1.0.apk", "code-assistants-v3.1.1.apk", "../Code-Assistants-v3.1.1.apk", "Code-Assistants-v3.1.1.apk.zip"}) {
-            Map<String,Object> bad = release("3.1.1"); asset(bad).put("name", name); noApk(arr(bad));
+        Map<String,Object> missing = release("3.3.1"); missing.remove("assets"); noApk(arr(missing));
+        for (String name : new String[]{"app.apk", "Ai-v3.3.1.apk", "Code-Assistants.apk", "Code-Assistants-v3.2.0.apk", "code-assistants-v3.3.1.apk", "../Code-Assistants-v3.3.1.apk", "Code-Assistants-v3.3.1.apk.zip"}) {
+            Map<String,Object> bad = release("3.3.1"); asset(bad).put("name", name); noApk(arr(bad));
         }
-        String canonical = download("3.1.1");
+        String canonical = download("3.3.1");
         for (Object url : new Object[]{null, 42, canonical.replace("https:", "http:"), canonical.replace("github.com", "github.com.evil.example"),
             canonical.replace("github.com", "api.github.com"), canonical.replace("github.com", "GITHUB.COM"),
             canonical.replace("github.com", "user@github.com"), canonical.replace("github.com", "github.com:443"),
             canonical.replace("github.com", "github.com:8443"), canonical + "?token=" + SECRET, canonical + "#apk",
             canonical.replace("/Ai/", "/Other/"), canonical.replace("/renatozapelini/", "/another/"),
-            canonical.replace("/v3.1.1/", "/v3.1.1/../v3.1.1/"), canonical.replace("/v3.1.1/", "/v3.1.1/%2e%2e/v3.1.1/"),
-            canonical.replace("/v3.1.1/", "/v3.1.1%2f/"), canonical.replace("/v3.1.1/", "//v3.1.1/"),
-            canonical.replace("/v3.1.1/", "/v3.1.2/"), canonical.replace("/Ai/", "/%41i/"), canonical.replace("github.com/", "github.com\\"), canonical + "\n"}) {
-            Map<String,Object> bad = release("3.1.1"); asset(bad).put("browser_download_url", url); noApk(arr(bad));
+            canonical.replace("/v3.3.1/", "/v3.3.1/../v3.3.1/"), canonical.replace("/v3.3.1/", "/v3.3.1/%2e%2e/v3.3.1/"),
+            canonical.replace("/v3.3.1/", "/v3.3.1%2f/"), canonical.replace("/v3.3.1/", "//v3.3.1/"),
+            canonical.replace("/v3.3.1/", "/v3.3.2/"), canonical.replace("/Ai/", "/%41i/"), canonical.replace("github.com/", "github.com\\"), canonical + "\n"}) {
+            Map<String,Object> bad = release("3.3.1"); asset(bad).put("browser_download_url", url); noApk(arr(bad));
         }
         for (Object size : new Object[]{null, "12345", 0, -1, 1.5, AppUpdates.APK_LIMIT + 1}) {
-            Map<String,Object> bad = release("3.1.1"); asset(bad).put("size", size); noApk(arr(bad));
+            Map<String,Object> bad = release("3.3.1"); asset(bad).put("size", size); noApk(arr(bad));
         }
-        Map<String,Object> max = release("3.1.1"); asset(max).put("size", AppUpdates.APK_LIMIT);
+        Map<String,Object> max = release("3.3.1"); asset(max).put("size", AppUpdates.APK_LIMIT);
         eq(inspect(arr(max)).get("available"), true, "100 MB inclusive");
-        Map<String,Object> duplicate = release("3.1.1"); list(duplicate.get("assets")).add(copy(asset(duplicate))); noApk(arr(duplicate));
-        Map<String,Object> mixed = release("3.1.2"); list(mixed.get("assets")).add(null); list(mixed.get("assets")).add(obj("name", "Other-App.apk"));
-        eq(inspect(arr(null, obj(), mixed)).get("latestVersion"), "3.1.2", "unrelated/null entries ignored");
-        Map<String,Object> noNewApk = release("3.2.0"); noNewApk.put("assets", null);
-        eq(inspect(arr(noNewApk, release("3.1.1"))).get("latestVersion"), "3.1.1", "largest validated APK, not unverified tag");
+        Map<String,Object> duplicate = release("3.3.1"); list(duplicate.get("assets")).add(copy(asset(duplicate))); noApk(arr(duplicate));
+        Map<String,Object> mixed = release("3.3.2"); list(mixed.get("assets")).add(null); list(mixed.get("assets")).add(obj("name", "Other-App.apk"));
+        eq(inspect(arr(null, obj(), mixed)).get("latestVersion"), "3.3.2", "unrelated/null entries ignored");
+        Map<String,Object> noNewApk = release("3.4.0"); noNewApk.put("assets", null);
+        eq(inspect(arr(noNewApk, release("3.3.1"))).get("latestVersion"), "3.3.1", "largest validated APK, not unverified tag");
     }
 
     private static void payloadAndHttp() throws Exception {
@@ -118,17 +118,17 @@ public final class AppUpdatesTest {
         String deep = "0"; for (int i = 0; i < 66; i++) deep = "[" + deep + "]";
         rejected(new Fake(deep), "invalid_payload");
         rejected(new Fake(new byte[]{(byte)0xc3, 0x28}), "invalid_payload");
-        String nonfinite = stringify(arr(release("3.1.1"))).replace("12345", "1e999"); rejected(new Fake(nonfinite), "invalid_payload");
+        String nonfinite = stringify(arr(release("3.3.1"))).replace("12345", "1e999"); rejected(new Fake(nonfinite), "invalid_payload");
         byte[] large = new byte[AppUpdates.BODY_LIMIT + 1]; Arrays.fill(large, (byte)' ');
         Fake chunked = new Fake(large); chunked.length = -1; rejected(chunked, "body_too_large");
         Fake declared = new Fake("[]"); declared.length = AppUpdates.BODY_LIMIT + 1L; rejected(declared, "body_too_large"); eq(declared.bodyReads, 0, "oversized content length rejected before read");
         byte[] exact = new byte[AppUpdates.BODY_LIMIT]; Arrays.fill(exact, (byte)' ');
-        byte[] valid = bytes(stringify(arr(release("3.1.1")))); System.arraycopy(valid, 0, exact, 0, valid.length);
+        byte[] valid = bytes(stringify(arr(release("3.3.1")))); System.arraycopy(valid, 0, exact, 0, valid.length);
         eq(inspect(new Fake(exact)).get("available"), true, "exact 1 MB accepted");
         Fake truncated = new Fake("[]"); truncated.length = 100; rejected(truncated, "truncated_response");
         Fake html = new Fake("<html>" + SECRET); html.type = "text/html"; rejected(html, "invalid_response");
         Fake gzip = new Fake("[]"); gzip.encoding = "gzip"; rejected(gzip, "invalid_response");
-        Fake vendor = new Fake(stringify(arr(release("3.1.1")))); vendor.type = "application/vnd.github+json; charset=utf-8";
+        Fake vendor = new Fake(stringify(arr(release("3.3.1")))); vendor.type = "application/vnd.github+json; charset=utf-8";
         eq(inspect(vendor).get("available"), true, "GitHub JSON media type");
         for (int status : new int[]{301, 302, 303, 307, 308, 401, 403, 404, 429, 500, 204}) {
             Fake error = new Fake("{\"message\":\"" + SECRET + "\"}"); error.status = status;
@@ -142,7 +142,7 @@ public final class AppUpdatesTest {
     }
 
     private static void cachingAndHeaders() throws Exception {
-        AtomicLong time = new AtomicLong(1000); Source source = new Source(new Fake(stringify(arr(release("3.1.1")))));
+        AtomicLong time = new AtomicLong(1000); Source source = new Source(new Fake(stringify(arr(release("3.3.1")))));
         AppUpdates client = new AppUpdates(source, time::get); Map<String,Object> first = contract(client.check());
         Fake sent = source.next;
         eq(sent.getRequestMethod(), "GET", "metadata GET only");
@@ -151,22 +151,27 @@ public final class AppUpdatesTest {
         Map<String,List<String>> headers = sent.getRequestProperties();
         eq(headers.keySet(), new HashSet<>(Arrays.asList("Accept", "User-Agent", "X-GitHub-Api-Version", "Accept-Encoding")), "only public metadata headers; no tokens or user keys");
         eq(sent.getRequestProperty("Accept"), "application/vnd.github+json", "GitHub accept");
-        eq(sent.getRequestProperty("User-Agent"), "Code-Assistants/3.1.0", "identifying user agent");
+        eq(sent.getRequestProperty("User-Agent"), "Code-Assistants/3.2.0", "identifying user agent");
         eq(sent.getRequestProperty("X-GitHub-Api-Version"), "2022-11-28", "pinned API version");
         first.put("downloadUrl", "https://evil.example/" + SECRET);
         time.set(1000 + AppUpdates.SUCCESS_TTL - 1); contract(client.check()); eq(source.hits.get(), 1, "success cache lasts one hour");
         source.next = new Fake("[]"); source.next.status = 404; time.incrementAndGet();
         Map<String,Object> failed = contract(client.check()); eq(source.hits.get(), 2, "recheck at one hour"); eq(failed.get("error"), "http_404", "expired success replaced by failure, no stale availability");
         eq(failed.get("checkedAt"), time.get(), "timestamp of latest completed check");
-        source.next = new Fake(stringify(arr(release("3.1.2"))));
+        source.next = new Fake(stringify(arr(release("3.3.2"))));
         time.addAndGet(AppUpdates.FAILURE_TTL - 1); eq(client.check(), failed, "failure cache unchanged before five minutes"); eq(source.hits.get(), 2, "failure retry throttled");
-        time.incrementAndGet(); eq(contract(client.check()).get("latestVersion"), "3.1.2", "retry at five minutes"); eq(source.hits.get(), 3, "failure retried once");
+        time.incrementAndGet(); eq(contract(client.check()).get("latestVersion"), "3.3.2", "retry at five minutes"); eq(source.hits.get(), 3, "failure retried once");
         time.set(0); client.check(); eq(source.hits.get(), 4, "backwards clock does not extend cache");
-        Source concurrent = new Source(new Fake(stringify(arr(release("3.1.1"))))); AppUpdates shared = new AppUpdates(concurrent, () -> 1L);
+        source.next = new Fake(stringify(arr(release("3.3.2"))));
+        eq(contract(client.check(true)).get("latestVersion"), "3.3.2", "manual force bypasses the failure cache");
+        eq(source.hits.get(), 5, "force performs a fresh metadata request");
+        eq(contract(client.check()).get("latestVersion"), "3.3.2", "forced result becomes the new cache");
+        eq(source.hits.get(), 5, "no extra request after a forced refresh");
+        Source concurrent = new Source(new Fake(stringify(arr(release("3.3.1"))))); AppUpdates shared = new AppUpdates(concurrent, () -> 1L);
         ExecutorService pool = Executors.newFixedThreadPool(8);
         try {
             List<Future<Map<String,Object>>> futures = new ArrayList<>();
-            for (int i = 0; i < 16; i++) futures.add(pool.submit(shared::check));
+            for (int i = 0; i < 16; i++) futures.add(pool.submit(() -> shared.check()));
             for (Future<Map<String,Object>> future : futures) contract(future.get(3, TimeUnit.SECONDS));
             eq(concurrent.hits.get(), 1, "concurrent checks share cache");
         } finally { pool.shutdownNow(); }
@@ -184,10 +189,13 @@ public final class AppUpdatesTest {
         Reply(int status, Map<String,Object> json) { this.status = status; this.json = json; }
     }
     private static Reply request(Gateway gateway, String method, String session, Map<String,Object> overrides) throws Exception {
+        return request(gateway, method, session, overrides, "/api/app/updates");
+    }
+    private static Reply request(Gateway gateway, String method, String session, Map<String,Object> overrides, String path) throws Exception {
         Map<String,Object> headers = obj("Host", "127.0.0.1:8790", "Origin", "http://127.0.0.1:8790", "Sec-Fetch-Site", "same-origin");
         if (session != null) headers.put("X-App-Session", session);
         headers.putAll(overrides);
-        StringBuilder wire = new StringBuilder(method + " /api/app/updates HTTP/1.1\r\n");
+        StringBuilder wire = new StringBuilder(method + " " + path + " HTTP/1.1\r\n");
         for (Map.Entry<String,Object> h : headers.entrySet()) if (h.getValue() != null) wire.append(h.getKey()).append(": ").append(h.getValue()).append("\r\n");
         wire.append("Content-Length: 0\r\n\r\n");
         try (Socket socket = new Socket("127.0.0.1", 8790)) {
@@ -200,7 +208,7 @@ public final class AppUpdatesTest {
     }
     private static void protectedRoute(Path parent) throws Exception {
         Path directory = Files.createTempDirectory(parent, "app-updates-state-");
-        AtomicLong time = new AtomicLong(1000); Source source = new Source(new Fake(stringify(arr(release("3.1.1")))));
+        AtomicLong time = new AtomicLong(1000); Source source = new Source(new Fake(stringify(arr(release("3.3.1")))));
         HubState state = new HubState(directory.toFile(), arr());
         Map<String,Object> stored = state.snapshot(); list(stored.get("providers")).add(obj("id", "fixture", "apiKey", SECRET)); state.commit(stored);
         String original = HubState.read(directory.resolve("hub-state.json").toFile(), 1000000);
@@ -215,7 +223,7 @@ public final class AppUpdatesTest {
             eq(request(gateway, "GET", gateway.sessionToken(), obj("Referer", "https://evil.example/")).status, 403, "foreign referer rejected");
             eq(source.hits.get(), 0, "unauthorized callers never contact GitHub");
             Reply valid = request(gateway, "GET", gateway.sessionToken(), obj()); eq(valid.status, 200, "authenticated update route");
-            eq(contract(valid.json).get("downloadUrl"), download("3.1.1"), "route contract");
+            eq(contract(valid.json).get("downloadUrl"), download("3.3.1"), "route contract");
             eq(request(gateway, "POST", gateway.sessionToken(), obj()).status, 404, "GET only, no install action");
             eq(source.hits.get(), 1, "one metadata check only");
             check(!stringify(source.next.getRequestProperties()).contains(gateway.sessionToken()), "local session never forwarded");
@@ -223,6 +231,12 @@ public final class AppUpdatesTest {
             time.addAndGet(AppUpdates.SUCCESS_TTL);
             Reply failed = request(gateway, "GET", gateway.sessionToken(), obj()); eq(failed.status, 503, "failed upstream has unavailable HTTP status");
             eq(contract(failed.json).get("error"), "http_404", "route preserves sanitized failure contract");
+            Reply forced = request(gateway, "GET", gateway.sessionToken(), obj(), "/api/app/updates?force=1");
+            eq(forced.status, 503, "manual force still reports honest failure status");
+            eq(source.hits.get(), 3, "force=1 bypasses the failure cache");
+            eq(request(gateway, "GET", gateway.sessionToken(), obj(), "/api/app/updates?force=0").status, 400, "only force=1 is a valid query");
+            eq(request(gateway, "GET", gateway.sessionToken(), obj(), "/api/app/updates?x=1").status, 400, "unknown query rejected");
+            eq(source.hits.get(), 3, "invalid queries never reach GitHub");
             eq(HubState.read(directory.resolve("hub-state.json").toFile(), 1000000), original, "checks do not mutate keys or app state");
         } finally {
             gateway.stop();

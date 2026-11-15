@@ -73,7 +73,7 @@ public final class GatewayTest {
     private static Map<String,Object> complete(String text) { return obj("id", "fake-complete", "choices", arr(obj("index", 0, "message", obj("role", "assistant", "content", text), "finish_reason", "stop")), "usage", obj("prompt_tokens", 2, "completion_tokens", 3, "total_tokens", 5)); }
     private static final class Fake implements AutoCloseable {
         final String protocol; final HttpServer server; final ExecutorService executor;
-        final AtomicInteger hits = new AtomicInteger(); volatile String mode = "valid"; volatile Map<String,Object> received; volatile String authorization, apiKey, version, receivedPath; volatile String redirect;
+        final AtomicInteger hits = new AtomicInteger(); volatile String mode = "valid"; volatile Map<String,Object> received; volatile String authorization, apiKey, googleKey, version, receivedPath; volatile String redirect;
         final CountDownLatch stall = new CountDownLatch(1);
         Fake(String protocol) throws Exception {
             this.protocol = protocol; server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 8);
@@ -84,7 +84,7 @@ public final class GatewayTest {
             try {
                 hits.incrementAndGet(); receivedPath = x.getRequestURI().getPath();
                 if (mode.equals("stall")) { try { stall.await(5, TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } return; }
-                authorization = x.getRequestHeaders().getFirst("Authorization"); apiKey = x.getRequestHeaders().getFirst("x-api-key"); version = x.getRequestHeaders().getFirst("anthropic-version");
+                authorization = x.getRequestHeaders().getFirst("Authorization"); apiKey = x.getRequestHeaders().getFirst("x-api-key"); googleKey = x.getRequestHeaders().getFirst("x-goog-api-key"); version = x.getRequestHeaders().getFirst("anthropic-version");
                 byte[] request = Gateway.readBounded(x.getRequestBody(), 26*1024*1024); if (request.length > 0) received = map(parse(new String(request, StandardCharsets.UTF_8)));
                 int status = 200; String type = "application/json", text;
                 if (mode.equals("402")) { status = 402; text = stringify(obj("error", obj("message", SECRET))); }
@@ -108,6 +108,7 @@ public final class GatewayTest {
                     if (protocol.equals("anthropic")) text = stringify(obj("id", "msg_tools", "type", "message", "role", "assistant", "model", "remote", "stop_reason", "tool_use", "content", arr(obj("type", "tool_use", "id", "call-write", "name", "write_file", "input", obj("path", "hello.txt", "content", "Hello"))), "usage", obj("input_tokens", 2, "output_tokens", 3)));
                     else { Map<String,Object> c = complete("tool requested"); Protocol.message(c).put("tool_calls", arr(obj("id", "call-write", "type", "function", "function", obj("name", "write_file", "arguments", "{\"path\":\"hello.txt\",\"content\":\"Hello\"}")))); map(list(c.get("choices")).get(0)).put("finish_reason", "tool_calls"); text = stringify(c); }
                 } else if (protocol.equals("anthropic")) text = stringify(obj("id", "msg_answer", "type", "message", "role", "assistant", "model", "remote", "stop_reason", "end_turn", "content", arr(obj("type", "text", "text", "continued by B")), "usage", obj("input_tokens", 2, "output_tokens", 3)));
+                else if (protocol.equals("gemini")) text = stringify(obj("candidates", arr(obj("content", obj("role", "model", "parts", arr(obj("text", "continued by Gemini"))), "finishReason", "STOP")), "usageMetadata", obj("promptTokenCount", 2, "candidatesTokenCount", 3, "totalTokenCount", 5)));
                 else text = stringify(complete("continued by B"));
                 x.getResponseHeaders().set("Content-Type", type); byte[] bytes = text.getBytes(StandardCharsets.UTF_8); x.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length); if (bytes.length > 0) x.getResponseBody().write(bytes);
             } finally { x.close(); }
@@ -193,8 +194,11 @@ public final class GatewayTest {
         eq(anthropic.receivedPath, "/v1/messages", "Anthropic endpoint");
         eq(map(Protocol.output(anth.json(), "anthropic").get("qoder_meta")).get("provider_id"), anthId, "Anthropic output retains metadata");
         eq(map(Protocol.output(anth.json(), "responses").get("qoder_meta")).get("provider_id"), anthId, "Responses output retains metadata");
-        Fake gemini = fake("openai"); Result createdGemini = request("POST", "/api/app/providers", obj("provider", "gemini", "name", "Gemini compatible", "baseUrl", gemini.url(), "apiKey", SECRET)); String geminiId = str(map(createdGemini.json().get("provider")).get("id")); enableOnly(geminiId);
-        eq(request("POST", "/api/app/assistant/complete", turn("provider:" + geminiId, arr(geminiId))).status, 200, "Gemini preset uses OpenAI compatibility"); eq(gemini.receivedPath, "/v1/chat/completions", "Gemini OpenAI endpoint"); eq(gemini.authorization, "Bearer " + SECRET, "Gemini OpenAI credential");
+        Fake gemini = fake("gemini"); Result createdGemini = request("POST", "/api/app/providers", obj("provider", "gemini", "name", "Google Gemini", "baseUrl", gemini.url(), "apiKey", SECRET)); String geminiId = str(map(createdGemini.json().get("provider")).get("id")); enableOnly(geminiId);
+        eq(request("POST", "/api/app/assistant/complete", turn("provider:" + geminiId, arr(geminiId))).status, 200, "Gemini preset uses native generateContent");
+        eq(gemini.receivedPath, "/v1/models/configured-model:generateContent", "native Gemini endpoint");
+        eq(gemini.googleKey, SECRET, "Gemini x-goog-api-key credential"); eq(gemini.authorization, null, "Gemini never receives OpenAI bearer auth");
+        eq(map(list(gemini.received.get("contents")).get(0)).get("role"), "user", "Gemini native request content");
         Fake timeout = fake("openai"); timeout.mode = "stall"; long started = System.currentTimeMillis(); boolean timedOut = false;
         try { Gateway.fetchJson(timeout.url(), null, SECRET, false, 200, 1024); }
         catch (Gateway.Failure e) { timedOut = true; check(!e.getMessage().contains(SECRET), "safe bounded timeout error"); }

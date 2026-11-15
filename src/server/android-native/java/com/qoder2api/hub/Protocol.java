@@ -207,6 +207,69 @@ public final class Protocol {
         if (c.containsKey("parallel_tool_calls")) { Map<String,Object> choice = out.containsKey("tool_choice") ? map(out.get("tool_choice")) : obj("type", "auto"); choice.put("disable_parallel_tool_use", !yes(c.get("parallel_tool_calls"))); out.put("tool_choice", choice); }
         return out;
     }
+    static String geminiText(Object raw) {
+        if (raw instanceof String) return str(raw);
+        StringBuilder text = new StringBuilder();
+        for (Object value : list(raw)) {
+            Map<String,Object> block = map(value);
+            if (!"text".equals(block.get("type")) || !(block.get("text") instanceof String)) unsupported("Gemini nativo aceita somente texto neste app");
+            text.append(str(block.get("text")));
+        }
+        return text.toString();
+    }
+    /** Converts the internal OpenAI-shaped history to the official Gemini generateContent API. */
+    public static Map<String,Object> geminiUpstream(Map<String,Object> canonical) {
+        if (canonical.containsKey("tools") || canonical.containsKey("tool_choice") || canonical.containsKey("parallel_tool_calls")) unsupported("Ferramentas ainda não são suportadas pela integração nativa do Gemini");
+        Map<String,Object> out = obj("contents", arr());
+        List<Object> contents = list(out.get("contents")); StringBuilder system = new StringBuilder();
+        for (Object raw : list(canonical.get("messages"))) {
+            Map<String,Object> message = map(raw); String role = str(message.get("role"));
+            if (arr("system", "developer").contains(role)) {
+                if (system.length() > 0) system.append("\n\n"); system.append(geminiText(message.get("content"))); continue;
+            }
+            if (!arr("user", "assistant").contains(role)) unsupported("Resultado de ferramenta não pode ser convertido para o Gemini nativo");
+            String geminiRole = role.equals("assistant") ? "model" : "user";
+            Map<String,Object> content = obj("role", geminiRole, "parts", arr(obj("text", geminiText(message.get("content")))));
+            if (!contents.isEmpty() && geminiRole.equals(map(contents.get(contents.size()-1)).get("role"))) {
+                list(map(contents.get(contents.size()-1)).get("parts")).addAll(list(content.get("parts")));
+            } else contents.add(content);
+        }
+        if (contents.isEmpty()) throw new IllegalArgumentException("Gemini requires at least one user or assistant message");
+        if (system.length() > 0) out.put("systemInstruction", obj("parts", arr(obj("text", system.toString()))));
+        Map<String,Object> config = obj();
+        if (canonical.containsKey("max_tokens")) config.put("maxOutputTokens", canonical.get("max_tokens"));
+        if (canonical.containsKey("temperature")) config.put("temperature", canonical.get("temperature"));
+        if (canonical.containsKey("top_p")) config.put("topP", canonical.get("top_p"));
+        if (canonical.containsKey("stop")) config.put("stopSequences", canonical.get("stop") instanceof String ? arr(canonical.get("stop")) : canonical.get("stop"));
+        if (canonical.containsKey("response_format")) {
+            Map<String,Object> format = map(canonical.get("response_format")); String type = str(format.get("type"));
+            if (type.equals("json_object")) config.put("responseMimeType", "application/json");
+            else if (!type.equals("text")) unsupported("Formato estruturado não suportado pela integração nativa do Gemini");
+        }
+        if (!config.isEmpty()) out.put("generationConfig", config);
+        for (String key : new String[]{"seed", "presence_penalty", "frequency_penalty", "logit_bias", "reasoning_effort", "thinking", "output_config"}) if (canonical.containsKey(key)) unsupported(key + " não pode ser convertido para o Gemini nativo");
+        return out;
+    }
+    /** Converts an official Gemini generateContent response back to the internal completion shape. */
+    public static Map<String,Object> geminiCompletion(Map<String,Object> response, String model) {
+        if (response.containsKey("error")) throw new Gateway.Failure(502, "upstream_error", "Gemini returned an error envelope");
+        List<Object> candidates = list(response.get("candidates"));
+        if (candidates.size() != 1) throw new Gateway.Failure(502, "upstream_error", "Gemini must return one candidate");
+        Map<String,Object> candidate = map(candidates.get(0)); String finish = str(candidate.get("finishReason"));
+        if (!finish.equals("STOP")) throw new Gateway.Failure(502, "truncated_response", "Gemini returned an incomplete candidate");
+        Map<String,Object> content = map(candidate.get("content")); StringBuilder text = new StringBuilder();
+        for (Object raw : list(content.get("parts"))) {
+            Map<String,Object> part = map(raw);
+            if (part.get("text") instanceof String) text.append(str(part.get("text")));
+            else throw new Gateway.Failure(502, "unsupported_upstream_output", "Gemini returned an unsupported part");
+        }
+        if (text.toString().trim().isEmpty()) throw new Gateway.Failure(502, "upstream_error", "Gemini returned an empty completion");
+        Map<String,Object> nativeUsage = response.get("usageMetadata") instanceof Map ? map(response.get("usageMetadata")) : obj();
+        long prompt = num(nativeUsage.get("promptTokenCount")), completion = num(nativeUsage.get("candidatesTokenCount"));
+        return obj("id", HubState.id("chatcmpl-"), "object", "chat.completion", "created", System.currentTimeMillis()/1000, "model", model,
+            "choices", arr(obj("index", 0, "message", obj("role", "assistant", "content", text.toString()), "finish_reason", "stop")),
+            "usage", obj("prompt_tokens", prompt, "completion_tokens", completion, "total_tokens", prompt+completion), "_gemini", response);
+    }
     public static Map<String,Object> completion(Map<String,Object> response, boolean anthropic, String model) {
         if (response.containsKey("error")) throw new Gateway.Failure(502, "upstream_error", "Provider returned an error envelope");
         if (!anthropic) {
@@ -248,7 +311,7 @@ public final class Protocol {
     static Map<String,Object> message(Map<String,Object> c) { return map(map(list(c.get("choices")).get(0)).get("message")); }
     static String finish(Map<String,Object> c) { return str(map(list(c.get("choices")).get(0)).get("finish_reason")); }
     public static Map<String,Object> output(Map<String,Object> c, String kind) {
-        if (kind.equals("openai")) { Map<String,Object> out = map(copy(c)); out.remove("_anthropic"); return out; }
+        if (kind.equals("openai")) { Map<String,Object> out = map(copy(c)); out.remove("_anthropic"); out.remove("_gemini"); return out; }
         Map<String,Object> m = message(c), u = map(c.get("usage")); List<Object> calls = m.containsKey("tool_calls") ? list(m.get("tool_calls")) : arr();
         if (kind.equals("anthropic")) {
             if (c.containsKey("_anthropic")) return metadata(map(copy(c.get("_anthropic"))), c);

@@ -10,7 +10,7 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useCodeProjects } from './hooks/useCodeProjects';
 import { CodeAssistantsPanel } from './components/CodeAssistantsPanel';
 import { ProjectBuildReview } from './components/ProjectBuildReview';
-import { QoderReminderPanel } from './components/QoderReminderPanel';
+import { QoderAccessPanel } from './components/QoderAccessPanel';
 import { androidBridge, appFetch } from './utils/androidBridge';
 import { AppUpdatePanel } from './components/AppUpdatePanel';
 import type { CodeProject } from './utils/codeAssistant';
@@ -20,9 +20,8 @@ export default function App() {
   const isOnline = useOnlineStatus();
   const [activeTab, setActiveTab] = useState<NavTab>('projects');
   const [projectPrefill, setProjectPrefill] = useState('');
-  const [standaloneChat, setStandaloneChat] = useState(false);
   const navigate = useCallback((tab: NavTab) => {
-    setStandaloneChat(false); setActiveTab(tab);
+    setActiveTab(tab);
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
   const [buildProject, setBuildProject] = useState<CodeProject | null>(null);
@@ -113,15 +112,15 @@ export default function App() {
         {activeTab === 'options' && <section className="rounded-xl border border-zinc-800 bg-[#12151B] p-4 space-y-3">
           <h1 className="text-lg font-semibold">Opções</h1>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {([{ id: 'scripts', label: 'Pré-prompt · detalhar uma ideia' }, { id: 'models', label: 'Modelos de IA' }, { id: 'analytics', label: 'Uso e falhas das APIs' }, { id: 'accounts', label: 'Qoder · lembrete opcional' }] as const).map(item => <button key={item.id} type="button" onClick={() => navigate(item.id)} className="min-h-[48px] text-left text-sm px-3 rounded-lg border border-zinc-800">{item.label}</button>)}
+            {([{ id: 'scripts', label: 'Pré-prompt · detalhar uma ideia' }, { id: 'models', label: 'Modelos de IA' }, { id: 'analytics', label: 'Uso e falhas das APIs' }, { id: 'accounts', label: 'Qoder · login assistido e múltiplas contas' }] as const).map(item => <button key={item.id} type="button" onClick={() => navigate(item.id)} className="min-h-[48px] text-left text-sm px-3 rounded-lg border border-zinc-800">{item.label}</button>)}
           </div>
           <p className="text-xs text-zinc-500">Projetos ficam neste dispositivo. A sincronização de arquivos com GitHub não está ativada; você pode exportar o ZIP pela área Arquivos do projeto. Nenhuma chave ou projeto é publicado automaticamente.</p>
         </section>}
-        <div hidden={activeTab !== 'projects' && (activeTab !== 'chat' || standaloneChat)}>
+        <div hidden={activeTab !== 'projects'}>
           <CodeAssistantsPanel projects={code.projects} activeId={code.activeId} busyId={code.busyId}
             providers={overview?.providers ?? []} error={code.error} prefill={projectPrefill}
             onConsumePrefill={() => setProjectPrefill('')} onCreate={code.create} onSelect={code.select}
-            view={activeTab === 'chat' ? 'chat' : 'home'} onConfigureProviders={code.configureProviders} onExecutionBlocked={code.setExecutionBlocked}
+            view="home" onConfigureProviders={code.configureProviders} onExecutionBlocked={code.setExecutionBlocked}
             onRun={(id) => void code.run(id)} onPause={code.pause} onSaveFile={code.saveFile} onImportFiles={code.saveFiles} onRequestChange={code.requestChange}
             onExport={code.exportProject} onNavigate={navigate} nativeAndroid={nativeAndroid}
             onBuild={(id) => { if (!code.busyId) {
@@ -130,9 +129,9 @@ export default function App() {
             } }} />
         </div>
 
-        {activeTab === 'chat' && standaloneChat && (
+        {activeTab === 'chat' && (
           <MobileChatPanel
-            models={[]}
+            models={models}
             providers={overview?.providers ?? []}
             accountsCount={totalActiveEndpoints}
             selectedModelId={selectedModelId}
@@ -157,8 +156,8 @@ export default function App() {
               navigate('projects');
             }}
             onSendToChat={(scriptText) => {
-              setProjectPrefill(scriptText);
-              navigate('projects');
+              setChatPrefillPrompt(scriptText);
+              navigate('chat');
             }}
             onProvidersChanged={() => void loadAppData()}
             onScriptCompleted={() => void loadAppData()}
@@ -171,6 +170,7 @@ export default function App() {
             settings={overview?.settings}
             apiFetch={apiFetch}
             onProvidersChanged={() => void loadAppData()}
+            onOpenQoder={() => navigate('accounts')}
           />
         </div>
 
@@ -193,13 +193,12 @@ export default function App() {
             onProvidersChanged={() => void loadAppData()}
             onTestModelInChat={(modelId) => {
               setSelectedModelId(modelId);
-              setStandaloneChat(true); setActiveTab('chat');
-              window.scrollTo(0, 0);
+              navigate('chat');
             }}
           />
         )}
 
-        {activeTab === 'accounts' && <QoderReminderPanel />}
+        {activeTab === 'accounts' && <QoderAccessPanel />}
       </main>
 
       {buildProject && <ProjectBuildReview key={`${buildProject.id}-${buildProject.revision}`} project={buildProject}

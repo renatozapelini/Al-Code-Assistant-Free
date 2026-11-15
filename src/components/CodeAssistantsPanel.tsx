@@ -223,10 +223,6 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
   const [showPreview, setShowPreview] = useState(false);
   const [changeInstruction, setChangeInstruction] = useState('');
   const [workspaceTab, setWorkspaceTab] = useState<'chat' | 'files' | 'tasks' | 'team'>('chat');
-  const [teamDraft, setTeamDraft] = useState(project.providerIds);
-  const savedTeamKey = JSON.stringify(project.providerIds);
-  useEffect(() => setTeamDraft(JSON.parse(savedTeamKey)), [savedTeamKey]);
-  const teamDirty = JSON.stringify(teamDraft) !== savedTeamKey;
   const [importReading, setImportReading] = useState(false);
   const [allowOverwrite, setAllowOverwrite] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
@@ -250,7 +246,7 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
     ? `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none';">${content}`
     : '';
 
-  const draftBlocked = dirtyPaths.length > 0 || importReading || teamDirty || changeInstruction.length > 0;
+  const draftBlocked = dirtyPaths.length > 0 || importReading || changeInstruction.length > 0;
   useEffect(() => {
     onSelectionBlocked(draftBlocked);
     onExecutionBlocked?.(project.id, draftBlocked);
@@ -313,7 +309,7 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
           <span>Checkpoint: {formatDate(project.updatedAt)}</span>
         </div>
         {dirtyPaths.length > 0 && <p role="status" className="text-xs text-amber-300">{dirtyPaths.length} arquivo(s) com edição não salva. Salve ou recarregue antes de executar, importar, exportar ou compilar.</p>}
-        {(teamDirty || changeInstruction.length > 0) && <p role="status" className="text-xs text-amber-300">Há um pedido ou equipe não salvos. Envie o pedido, salve a equipe ou limpe o rascunho antes de executar ou trocar de projeto.</p>}
+        {changeInstruction.length > 0 && <p role="status" className="text-xs text-amber-300">Há um pedido ainda não enviado. Envie o pedido ou limpe o texto antes de executar ou trocar de projeto.</p>}
         {budgetReached && <p className="text-xs text-amber-300">Orçamento de tentativas esgotado. Retomar pedirá sua autorização para mais 40 tentativas, preservando este checkpoint.</p>}
         {!hasAvailableProvider && <p className="text-xs text-amber-300">Nenhuma API habilitada desta equipe está disponível. Confira as APIs salvas antes de retomar.</p>}
         {busyId !== null && busyId !== project.id && <p className="text-xs text-amber-300">Outro projeto está ocupado. Aguarde ou pause sua execução antes de iniciar ou compilar este.</p>}
@@ -335,7 +331,7 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
               <p className="text-[11px] text-emerald-300">{event.type === 'request' ? 'Você' : providers.find(p => p.id === event.providerId)?.name || eventLabels[event.type] || 'Sistema'} · {formatDate(event.at)}</p>
               <p className="text-xs whitespace-pre-wrap text-zinc-300 mt-1">{event.message}</p>
             </li>)}
-          </ol> : <p className="text-xs text-zinc-400">Projeto salvo. Escolha a equipe e clique em Iniciar para a IA trabalhar nos arquivos.</p>}
+          </ol> : <p className="text-xs text-zinc-400">Projeto salvo. Marque a equipe na aba Equipe e use o único botão Iniciar assistentes para a IA trabalhar nos arquivos.</p>}
           {project.summary && <p className="whitespace-pre-wrap text-sm text-zinc-200 border-t border-zinc-800 pt-3">{project.summary}</p>}
         </section>
       <section className={cardClass} aria-label="Solicitar alteração no projeto">
@@ -356,13 +352,18 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
         </div>
         <fieldset disabled={locked || busyId !== null} className="space-y-2">
           <legend className="text-xs text-zinc-400 pb-2">Marque as APIs na ordem em que devem trabalhar</legend>
-          {providers.map(provider => <label key={provider.id} className="flex gap-2 items-center min-h-[44px] text-xs">
-            <input type="checkbox" checked={teamDraft.includes(provider.id)} disabled={!provider.enabled && !teamDraft.includes(provider.id)} onChange={e => setTeamDraft(prev => e.target.checked ? [...prev, provider.id] : prev.filter(id => id !== provider.id))} className="accent-emerald-500" />
-            <span>{teamDraft.includes(provider.id) ? `${teamDraft.indexOf(provider.id) + 1}. ` : ''}{provider.name} · {provider.defaultModel}{!provider.enabled ? ' · desabilitada' : ''}</span>
-          </label>)}
+          {providers.map(provider => {
+            const selected = project.providerIds.includes(provider.id);
+            return <label key={provider.id} className={`flex gap-2 items-center min-h-[44px] text-xs ${!provider.enabled && !selected ? 'opacity-50' : ''}`}>
+              <input type="checkbox" checked={selected} disabled={!provider.enabled && !selected} onChange={e => {
+                const next = e.target.checked ? [...project.providerIds, provider.id] : project.providerIds.filter(id => id !== provider.id);
+                onConfigureProviders?.(project.id, next);
+              }} className="accent-emerald-500" />
+              <span>{selected ? `${project.providerIds.indexOf(provider.id) + 1}. ` : ''}{provider.name} · {provider.defaultModel}{!provider.enabled ? ' · desabilitada' : ''}</span>
+            </label>;
+          })}
           {!providers.length && <p className="text-xs text-amber-300">Adicione suas chaves na aba APIs IA. Depois selecione a equipe aqui.</p>}
-          <button type="button" className={buttonClass} onClick={() => onConfigureProviders?.(project.id, teamDraft)}>Salvar equipe</button>
-          {teamDirty && <button type="button" className={buttonClass} onClick={() => setTeamDraft([...project.providerIds])}>Recarregar equipe salva</button>}
+          <p className="text-[11px] text-zinc-400">A equipe é salva imediatamente ao marcar ou desmarcar. Depois use apenas o botão Iniciar assistentes.</p>
         </fieldset>
         <ol className="space-y-1.5" aria-label="Ordem de passagem entre APIs">
           {project.providerIds.map((id, index) => {
@@ -551,7 +552,6 @@ export const CodeAssistantsPanel: React.FC<CodeAssistantsPanelProps> = ({
     const id = onCreate({ name: name.trim(), goal: goal.trim(), blueprint: blueprint.trim() || undefined, providerIds: [...providerIds], files: { ...initialFiles }, maxTurns: Number(maxTurns) });
     if (id) {
       setName(''); setGoal(''); setBlueprint(''); setInitialFiles({}); setShowCreate(false);
-      onNavigate('chat');
     }
     // Failed persistence keeps the complete draft visible.
   };
@@ -620,9 +620,9 @@ export const CodeAssistantsPanel: React.FC<CodeAssistantsPanelProps> = ({
       <div className="min-w-0 space-y-4">
         <aside hidden={view !== 'home'} className={cardClass} aria-label="Projetos salvos">
           <h2 className="text-sm font-semibold">Projetos locais ({projects.length})</h2>
-          {workspaceBlocked && <p role="status" className="text-[11px] text-amber-300">Salve ou limpe os rascunhos de arquivos, pedido e equipe e aguarde a importação antes de trocar ou criar um projeto.</p>}
+          {workspaceBlocked && <p role="status" className="text-[11px] text-amber-300">Salve ou limpe os rascunhos de arquivos e o pedido, e aguarde a importação antes de trocar ou criar um projeto.</p>}
           <nav className="max-h-[480px] space-y-2 overflow-y-auto" aria-label="Selecionar projeto">
-            {projects.map((item) => <button key={item.id} type="button" disabled={importReading || (workspaceBlocked && activeId !== item.id)} onClick={() => { if (!importReading && (!workspaceBlocked || activeId === item.id)) { onSelect(item.id); onNavigate('chat'); } }} aria-current={activeId === item.id ? 'true' : undefined} className={`min-h-[44px] w-full space-y-1 rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${activeId === item.id ? 'border-emerald-700/60 bg-emerald-950/25' : 'border-zinc-800 bg-[#090B0E] hover:bg-zinc-900'}`}>
+            {projects.map((item) => <button key={item.id} type="button" disabled={importReading || (workspaceBlocked && activeId !== item.id)} onClick={() => { if (!importReading && (!workspaceBlocked || activeId === item.id)) onSelect(item.id); }} aria-current={activeId === item.id ? 'true' : undefined} className={`min-h-[44px] w-full space-y-1 rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${activeId === item.id ? 'border-emerald-700/60 bg-emerald-950/25' : 'border-zinc-800 bg-[#090B0E] hover:bg-zinc-900'}`}>
               <span className="block break-words text-xs font-semibold text-zinc-100">{item.name}</span>
               <span className={`block text-[11px] ${statusInfo[item.status].color}`}>{statusInfo[item.status].label}{busyId === item.id ? ' · Ocupado' : ''}</span>
               <span className="block text-[11px] text-zinc-400">{Object.keys(item.files).length} arquivos · {item.turn}/{item.maxTurns} rodadas</span>
@@ -630,7 +630,7 @@ export const CodeAssistantsPanel: React.FC<CodeAssistantsPanelProps> = ({
             {!projects.length && <p className="text-xs text-zinc-400">Nenhum projeto salvo. Preencha o formulário para começar.</p>}
           </nav>
         </aside>
-        {project ? <ProjectWorkspace key={project.id} project={project} busyId={busyId} providers={providers} onRun={onRun} onPause={onPause} onSaveFile={onSaveFile} onImportFiles={onImportFiles} onRequestChange={onRequestChange} onExport={onExport} onBuild={onBuild} nativeAndroid={nativeAndroid} onSelectionBlocked={setWorkspaceBlocked} onExecutionBlocked={onExecutionBlocked} visible={view === 'chat'} onConfigureProviders={onConfigureProviders} /> : view === 'chat' ? <section className={`${cardClass} text-xs text-zinc-400`}>Crie ou selecione uma pasta na aba Projetos para abrir seu chat.</section> : null}
+        {project ? <ProjectWorkspace key={project.id} project={project} busyId={busyId} providers={providers} onRun={onRun} onPause={onPause} onSaveFile={onSaveFile} onImportFiles={onImportFiles} onRequestChange={onRequestChange} onExport={onExport} onBuild={onBuild} nativeAndroid={nativeAndroid} onSelectionBlocked={setWorkspaceBlocked} onExecutionBlocked={onExecutionBlocked} visible={view === 'home'} onConfigureProviders={onConfigureProviders} /> : null}
       </div>
     </div>
   );

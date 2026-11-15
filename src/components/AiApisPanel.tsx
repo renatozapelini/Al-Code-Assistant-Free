@@ -30,11 +30,14 @@ import type {
   SafeProviderSummary,
 } from '../types/hub';
 
+const DEFAULT_PROVIDER_PRESET = PROVIDER_PRESETS.find((preset) => preset.id === 'openai') || PROVIDER_PRESETS[0];
+
 interface AiApisPanelProps {
   providers: SafeProviderSummary[];
   settings?: GatewaySettings;
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
   onProvidersChanged: () => void;
+  onOpenQoder?: () => void;
 }
 
 interface ProviderEditDraft {
@@ -73,6 +76,19 @@ function makeDraftFromPreset(preset: ProviderPreset, indexSuffix?: number): Draf
     name: indexSuffix && indexSuffix > 1 ? `${preset.name} #${indexSuffix}` : preset.name,
     baseUrl: preset.baseUrl,
     defaultModel: preset.defaultModel,
+    protocol: preset.protocol,
+    apiKey: '',
+    showKey: false,
+  };
+}
+
+function makeBlankDraft(preset: ProviderPreset): DraftProviderRow {
+  return {
+    localId: `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    provider: preset.id,
+    name: '',
+    baseUrl: '',
+    defaultModel: '',
     protocol: preset.protocol,
     apiKey: '',
     showKey: false,
@@ -149,21 +165,23 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
   settings,
   apiFetch,
   onProvidersChanged,
+  onOpenQoder,
 }) => {
-  const [categoryFilter, setCategoryFilter] = useState<'all' | ProviderCategory>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | ProviderCategory>('major');
+  const [showFreeSuggestions, setShowFreeSuggestions] = useState(false);
   const [entryMode, setEntryMode] = useState<'rows' | 'bulk'>('rows');
-  const [selectedPresetId, setSelectedPresetId] = useState<ProviderPresetId>('gemini');
+  const [selectedPresetId, setSelectedPresetId] = useState<ProviderPresetId>('openai');
 
   // Dynamic multi-row entry state
   const [draftRows, setDraftRows] = useState<DraftProviderRow[]>(() => [
-    makeDraftFromPreset(PROVIDER_PRESETS[0]),
+    makeDraftFromPreset(DEFAULT_PROVIDER_PRESET),
   ]);
 
   // Bulk multi-key paste mode state
-  const [bulkPresetId, setBulkPresetId] = useState<ProviderPresetId>('gemini');
-  const [bulkBaseName, setBulkBaseName] = useState('Google Gemini');
-  const [bulkBaseUrl, setBulkBaseUrl] = useState(PROVIDER_PRESETS[0].baseUrl);
-  const [bulkModel, setBulkModel] = useState(PROVIDER_PRESETS[0].defaultModel);
+  const [bulkPresetId, setBulkPresetId] = useState<ProviderPresetId>('openai');
+  const [bulkBaseName, setBulkBaseName] = useState(DEFAULT_PROVIDER_PRESET.name);
+  const [bulkBaseUrl, setBulkBaseUrl] = useState(DEFAULT_PROVIDER_PRESET.baseUrl);
+  const [bulkModel, setBulkModel] = useState(DEFAULT_PROVIDER_PRESET.defaultModel);
   const [bulkProtocol, setBulkProtocol] = useState<'openai' | 'anthropic'>('openai');
   const [bulkKeysText, setBulkKeysText] = useState('');
 
@@ -192,9 +210,10 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
   const [addingAllDiscovered, setAddingAllDiscovered] = useState(false);
 
   const filteredPresets = useMemo(() => {
-    if (categoryFilter === 'all') return PROVIDER_PRESETS;
-    return PROVIDER_PRESETS.filter((p) => p.category === categoryFilter);
-  }, [categoryFilter]);
+    const visible = showFreeSuggestions ? PROVIDER_PRESETS : PROVIDER_PRESETS.filter((preset) => preset.category !== 'free_tier');
+    if (categoryFilter === 'all') return visible;
+    return visible.filter((p) => p.category === categoryFilter);
+  }, [categoryFilter, showFreeSuggestions]);
 
   const activePreset = useMemo(
     () => PROVIDER_PRESETS.find((p) => p.id === selectedPresetId) || PROVIDER_PRESETS[0],
@@ -267,16 +286,6 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
 
   const updateRow = (localId: string, patch: Partial<DraftProviderRow>) => {
     setDraftRows((prev) => prev.map((r) => (r.localId === localId ? { ...r, ...patch } : r)));
-  };
-
-  const addAnotherRow = () => {
-    const lastRow = draftRows[draftRows.length - 1];
-    const preset =
-      PROVIDER_PRESETS.find((p) => p.id === (lastRow?.provider || selectedPresetId)) ||
-      PROVIDER_PRESETS[0];
-    const draft = makeDraftFromPreset(preset, draftRows.length + 1);
-    setDraftRows((prev) => [...prev, draft]);
-    setFocusRequest({ localId: draft.localId });
   };
 
   const removeDraftRow = (localId: string) => {
@@ -364,7 +373,7 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
     setSubmitting(true);
     try {
       const count = await postProvidersSequence(payloadItems);
-      setDraftRows([makeDraftFromPreset(activePreset)]);
+      setDraftRows([makeBlankDraft(activePreset)]);
       setNotice({
         kind: 'ok',
         text: `${count} API(s) salvas. Teste a conexão e escolha-as na fila do projeto.`,
@@ -403,6 +412,9 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
       }));
       const count = await postProvidersSequence(items);
       setBulkKeysText('');
+      setBulkBaseName('');
+      setBulkBaseUrl('');
+      setBulkModel('');
       setNotice({
         kind: 'ok',
         text: `${count} chave(s) salvas. Teste a conexão e escolha-as na fila do projeto.`,
@@ -946,11 +958,11 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
         <div className="flex flex-wrap items-center gap-1.5">
           {(
             [
-              { id: 'all', label: `Todas (${PROVIDER_PRESETS.length})` },
-              { id: 'free_tier', label: 'Cota / modelos :free' },
+              { id: 'all', label: `Disponíveis (${showFreeSuggestions ? PROVIDER_PRESETS.length : PROVIDER_PRESETS.filter((preset) => preset.category !== 'free_tier').length})` },
               { id: 'major', label: 'Principais / Pagas' },
               { id: 'local', label: 'Locais (Ollama/LM)' },
               { id: 'custom', label: 'Customizada' },
+              ...(showFreeSuggestions ? [{ id: 'free_tier' as const, label: 'Com cota grátis (opcional)' }] : []),
             ] as const
           ).map((cat) => (
             <button
@@ -966,7 +978,21 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
               {cat.label}
             </button>
           ))}
+          <button
+            type="button"
+            aria-pressed={showFreeSuggestions}
+            onClick={() => {
+              setShowFreeSuggestions((current) => {
+                if (current && categoryFilter === 'free_tier') setCategoryFilter('major');
+                return !current;
+              });
+            }}
+            className="min-h-[38px] px-3.5 rounded-lg border border-zinc-800 bg-[#090B0E] text-xs font-medium text-zinc-300"
+          >
+            {showFreeSuggestions ? 'Ocultar sugestões grátis' : 'Mostrar opções com cota grátis'}
+          </button>
         </div>
+        <p className="text-[11px] text-zinc-500">Opções com cota grátis ficam ocultas por padrão e nunca são adicionadas automaticamente. Mostre-as somente se quiser cadastrar uma chave delas.</p>
 
         {/* Provider Preset Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
@@ -1012,7 +1038,7 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
         {entryMode === 'rows' && (
           <form aria-label="Adicionar chaves de APIs" onSubmit={(e) => void handleSubmitRows(e)} className="space-y-3">
             <fieldset disabled={mutationBusy} className="space-y-3 min-w-0">
-            {draftRows.map((row, idx) => {
+            {draftRows.map((row) => {
               const rowPreset = getEndpointPreset(row.provider, row.baseUrl) || PROVIDER_PRESETS[0];
               return (
                 <div
@@ -1021,7 +1047,7 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-mono font-semibold text-emerald-400">
-                      IA / Chave #{idx + 1}
+                      Nova API
                     </span>
                     {rowPreset.signupUrl ? (
                       <a href={rowPreset.signupUrl} target="_self" rel="noopener noreferrer" className="min-h-[40px] text-xs text-emerald-300 flex items-center gap-1.5">
@@ -1083,8 +1109,8 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-zinc-400">Protocolo</label>
+                    {row.provider === 'custom' ? <div className="space-y-1">
+                      <label className="text-[11px] text-zinc-400">Formato da API customizada</label>
                       <select
                         value={row.protocol}
                         onChange={(e) =>
@@ -1094,10 +1120,14 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
                         }
                         className="w-full min-h-[44px] bg-[#12151B] border border-zinc-800 rounded-xl px-3 text-xs font-medium text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
-                        <option value="openai">OpenAI Compatible (/chat/completions)</option>
-                        <option value="anthropic">Anthropic (/messages)</option>
+                        <option value="openai">Chat Completions compatível</option>
+                        <option value="anthropic">Anthropic / Claude Messages</option>
                       </select>
-                    </div>
+                      <p className="text-[10px] text-zinc-500">Anthropic é a empresa do Claude. Escolha este formato somente para um endpoint Claude/Anthropic.</p>
+                    </div> : <div className="space-y-1">
+                      <span className="text-[11px] text-zinc-400">Integração</span>
+                      <p className="min-h-[44px] flex items-center rounded-xl border border-zinc-800 bg-[#12151B] px-3 text-xs text-zinc-200">{row.provider === 'gemini' ? 'Google Gemini · API nativa' : rowPreset.name}</p>
+                    </div>}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1169,16 +1199,7 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
               );
             })}
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
-              <button
-                type="button"
-                onClick={addAnotherRow}
-                className="min-h-[44px] px-4 rounded-xl border border-dashed border-zinc-700 hover:border-emerald-500/70 hover:bg-emerald-950/20 text-xs font-semibold text-zinc-200 flex items-center justify-center gap-2 transition-colors"
-              >
-                <Plus className="w-4 h-4 text-emerald-400" />
-                <span>+ Adicionar mais IA / Outra Chave</span>
-              </button>
-
+            <div className="flex justify-end pt-1">
               <button
                 type="submit"
                 disabled={mutationBusy}
@@ -1277,12 +1298,14 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
       </section>
 
       <section aria-labelledby="qoder-official-title" className="bg-[#12151B] border border-zinc-800/80 rounded-2xl p-4 space-y-2">
-        <h2 id="qoder-official-title" className="text-sm font-semibold text-zinc-100">Qoder · site oficial</h2>
-        <p className="text-xs text-zinc-400">Acesso pelo site oficial; não configurado como API de inferência neste app</p>
-        <a href="https://qoder.com" target="_self" rel="noopener noreferrer" className="min-h-[44px] text-xs text-emerald-300 flex items-center gap-1.5">
-          <ExternalLink className="w-3.5 h-3.5" />
-          Abrir site oficial do Qoder
-        </a>
+        <h2 id="qoder-official-title" className="text-sm font-semibold text-zinc-100">Qoder · assistente usado no desenvolvimento</h2>
+        <p className="text-xs text-zinc-400">O Qoder ajudou a desenvolver este app e possui acesso assistido para organizar múltiplas contas. Ele não é tratado aqui como API de inferência.</p>
+        <div className="flex flex-wrap gap-3">
+          {onOpenQoder && <button type="button" onClick={onOpenQoder} className="min-h-[44px] text-xs text-emerald-300">Gerenciar logins Qoder</button>}
+          <a href="https://qoder.com" target="_self" rel="noopener noreferrer" className="min-h-[44px] text-xs text-emerald-300 flex items-center gap-1.5">
+            <ExternalLink className="w-3.5 h-3.5" /> Abrir site oficial
+          </a>
+        </div>
       </section>
 
       {/* Section 2: Priority Failover Queue */}
@@ -1327,6 +1350,7 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
               const cooldownSecLeft = inCooldown && prv.cooldownUntil ? prv.cooldownUntil - nowSec : 0;
               const isBusy = testingId === prv.id || (testingAll && prv.enabled);
               const isEditing = editingId === prv.id;
+              const testedWorking = prv.enabled && !inCooldown && !prv.lastError && prv.requestCount > 0;
 
               return (
                 <div
@@ -1340,25 +1364,27 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
                           #{idx + 1}
                         </span>
                         <h3 className="text-sm font-semibold text-zinc-100 truncate">{prv.name}</h3>
-                        <span className="text-[11px] font-mono text-zinc-500">
-                          {prv.protocol.toUpperCase()}
+                        <span className="text-[11px] text-zinc-500">
+                          {PROVIDER_PRESETS.find((preset) => preset.id === prv.provider)?.name || (prv.protocol === 'anthropic' ? 'Claude / Anthropic' : 'API customizada')}
                         </span>
                         <span
                           className={`text-xs font-medium ${
-                            !prv.enabled
-                              ? 'text-zinc-500'
-                              : inCooldown
+                            testedWorking
+                              ? 'text-emerald-400'
+                              : inCooldown || prv.lastError
                                 ? 'text-amber-400'
-                                : 'text-emerald-400'
+                                : 'text-zinc-500'
                           }`}
                         >
                           {!prv.enabled
                             ? 'Pausada'
                             : inCooldown
-                              ? `Cooldown (${cooldownSecLeft}s)`
-                              : idx === 0
-                                ? 'Habilitada (#1)'
-                                : 'Habilitada'}
+                              ? `Indisponível · aguarde ${cooldownSecLeft}s`
+                              : prv.lastError
+                                ? 'Falhou no último teste'
+                                : testedWorking
+                                  ? 'Funcionando'
+                                  : 'Ainda não testada'}
                         </span>
                       </div>
                       <p className="text-xs font-mono text-zinc-400 truncate tabular-nums">

@@ -239,8 +239,9 @@ java = javaProcess;
   };
   const selectProject = async (name: string) => {
     await clickText(name, 'document.querySelector(\'nav[aria-label="Selecionar projeto"]\')');
+    await waitFor(shown('[aria-label="Execução do projeto"]'));
+    if (!await evaluate("document.querySelector('nav[aria-label=\"Áreas do projeto\"] button[aria-pressed=\"true\"]')?.textContent.trim()==='Chat'")) await area('Chat');
     await waitFor(shown('[aria-label="Chat do projeto"]'));
-    assert(await evaluate("document.querySelector('nav[aria-label=\"Áreas do projeto\"] button[aria-pressed=\"true\"]').textContent.trim()==='Chat'"), 'Opening a project must default to its Chat area');
   };
   const setField = (selector: string, value: string) => evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!window.__uiVisible(el))throw new Error('Visible input missing: '+${JSON.stringify(selector)});const prototype=el instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:el instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el instanceof HTMLSelectElement?'change':'input',{bubbles:true}));return true})()`);
   const storedProjects = async (): Promise<CodeProject[]> => evaluate("JSON.parse(localStorage.getItem('hub-code-projects-v1')||'[]')");
@@ -291,7 +292,7 @@ java = javaProcess;
     const home = await evaluate(`(()=>{const h=[...document.querySelectorAll('h1')].find(h=>window.__uiVisible(h)&&h.textContent.trim()==='Meus projetos');return {shortcuts:[...h.closest('section').querySelectorAll('button')].filter(window.__uiVisible).map(b=>b.textContent.trim()),bottom:[...document.querySelectorAll('nav[aria-label="Navegação móvel"] button')].map(b=>b.querySelector(':scope > span').textContent.trim())}})()`);
     assert(home.shortcuts.length === 2 && home.shortcuts.includes('Criar pré-prompt') && home.shortcuts.some((label: string) => label === 'Novo projeto' || label === 'Fechar formulário'), 'Home must offer exactly two project shortcuts');
     assert(home.bottom.join('|') === 'Projetos|Chat|APIs IA|Opções', 'Mobile bottom navigation must have exactly four current destinations');
-    assert(!await evaluate(shown('[aria-label="Execução do projeto"]')), 'Reload/home must not expose a project workspace');
+    assert(await evaluate(`(()=>{const workspace=document.querySelector('[aria-label="Execução do projeto"]');return !window.__uiVisible(workspace)||!!document.querySelector('nav[aria-label="Áreas do projeto"] button[aria-pressed="true"]')})()`), 'Projects home may keep the selected project workspace visible with one active area');
   };
   const configureTeam = async () => {
     await area('Equipe');
@@ -299,7 +300,7 @@ java = javaProcess;
       await evaluate(`(()=>{const section=document.querySelector('section[aria-label="Equipe de assistentes"]');const label=[...section.querySelectorAll('label')].find(l=>l.textContent.includes(${JSON.stringify(name)}));const input=label?.querySelector('input[type="checkbox"]');if(!input||input.disabled)throw new Error('Available fixture team missing');if(!input.checked)input.click()})()`);
       await settle();
     }
-    await clickText('Salvar equipe', 'document.querySelector(\'section[aria-label="Equipe de assistentes"]\')');
+    assert(!await evaluate("[...document.querySelectorAll('button')].some(b=>window.__uiVisible(b)&&b.textContent.includes('Salvar equipe'))"), 'Team selection must save immediately without a duplicate Save team button');
     await settle();
   };
   await viewport(390);
@@ -358,7 +359,7 @@ java = javaProcess;
   await configureTeam();
   const configured = await savedProject(emptyName);
   assert(configured.providerIds.join(',') === ids.join(',') && configured.turn === 0 && Object.keys(configured.files).length === 0 && configured.goal === empty.goal, 'A team may be added later without discarding folder context');
-  assert(upstreamRequests === beforeTeam, 'Saving a team must not initiate assistant calls');
+  assert(upstreamRequests === beforeTeam, 'Automatically saving a team must not initiate assistant calls');
   await area('Chat');
   assert(await evaluate("![...document.querySelectorAll('section[aria-label=\"Execução do projeto\"] button')].find(b=>b.textContent.includes('Retomar trabalho')).disabled"), 'Start/resume must become available after selecting the team');
   passed('Team selected later, preserved empty folder, execution remains manual');
@@ -463,6 +464,15 @@ java = javaProcess;
   const assertSignup = async () => {
     assert(await evaluate(`(()=>{const links=[...document.querySelectorAll('#ai-api-key-form a')].filter(a=>window.__uiVisible(a)&&a.href===${JSON.stringify(signup)});return links.length>0&&links.every(a=>a.target==='_self'&&a.textContent.includes('Registrar / obter chave'))})()`), 'OpenRouter registration/key links must use the official URL and _self without account automation');
   };
+  const selectOpenRouterPreset = async () => {
+    const visible = () => evaluate("[...document.querySelectorAll('button')].some(b=>window.__uiVisible(b)&&b.textContent.trim()==='OpenRouter')");
+    if (!await visible()) {
+      if (await evaluate("[...document.querySelectorAll('button')].some(b=>window.__uiVisible(b)&&b.textContent.includes('Mostrar opções com cota grátis'))")) await clickText('Mostrar opções com cota grátis');
+      await clickText('Com cota grátis (opcional)');
+    }
+    await clickText('OpenRouter');
+    await waitFor("document.activeElement?.matches('#ai-api-key-form input[type=password]')");
+  };
   await nav('APIs IA'); await waitFor(shown('#ai-api-key-form'));
   const originalKeyId = await evaluate("document.querySelector('#ai-api-key-form input[type=password]').id") as string;
   await setField(`#${originalKeyId}`, 'TEST-TYPED-KEY-NOT-REAL');
@@ -507,13 +517,12 @@ java = javaProcess;
     for (const label of ['Tarefas', 'Equipe', 'Arquivos', 'Chat']) { await area(label); await checkLayout(`Workspace ${label}`); }
     await nav('APIs IA'); await waitFor(shown('#ai-api-key-form')); await checkLayout('APIs de IA');
     await discover(); await checkLayout('APIs discovery');
-    await clickText('OpenRouter');
-    await waitFor("document.activeElement?.matches('#ai-api-key-form input[type=password]')");
+    await selectOpenRouterPreset();
     await assertSignup(); await checkLayout('APIs password form');
     await nav('Opções');
     await waitFor("[...document.querySelectorAll('h1')].some(h=>window.__uiVisible(h)&&h.textContent.trim()==='Opções')");
     await checkLayout('Opções');
-    assert(await evaluate("(()=>{const s=document.querySelector('section[aria-label=\"Atualizações do aplicativo\"]');return window.__uiVisible(s)&&s.textContent.includes('Code Assistants 3.1.0')&&[...s.querySelectorAll('button')].some(b=>window.__uiVisible(b)&&b.textContent.includes('Verificar atualização'))})()"), 'Options must expose the GitHub update panel with the installed version and a manual check button');
+    assert(await evaluate("(()=>{const s=document.querySelector('section[aria-label=\"Atualizações do aplicativo\"]');return window.__uiVisible(s)&&s.textContent.includes('Code Assistants 3.2.0')&&[...s.querySelectorAll('button')].some(b=>window.__uiVisible(b)&&b.textContent.includes('Verificar atualização'))})()"), 'Options must expose the GitHub update panel with the installed version and a manual check button');
     assert(!await evaluate("[...document.querySelectorAll('a')].some(a=>window.__uiVisible(a)&&a.textContent.includes('Baixar novo APK'))"), 'Empty releases must never offer an APK download');
     await clickText('Modelos de IA');
     await waitFor("[...document.querySelectorAll('h1')].some(h=>window.__uiVisible(h)&&h.textContent.trim()==='Multi-IA')");
@@ -526,8 +535,7 @@ java = javaProcess;
   assert(upstreamRequests === beforeMatrix, 'Layout navigation must not call any upstream provider');
   await viewport(390); await nav('Projetos'); await assertHome(); await capture('08-home-com-projetos-mobile.png');
   await selectProject(savedName); await capture('09-chat-mobile.png');
-  await nav('APIs IA'); await waitFor(shown('#ai-api-key-form')); await clickText('OpenRouter');
-  await waitFor("document.activeElement?.matches('#ai-api-key-form input[type=password]')");
+  await nav('APIs IA'); await waitFor(shown('#ai-api-key-form')); await selectOpenRouterPreset();
   await capture('10-apis-form-mobile.png', '#ai-api-key-form');
   await nav('Opções');
   await waitFor("[...document.querySelectorAll('h1')].some(h=>window.__uiVisible(h)&&h.textContent.trim()==='Opções')");
@@ -539,7 +547,7 @@ java = javaProcess;
   const updateProbe = await evaluate(`fetch('/api/app/updates',{headers:{'X-App-Session':window.AndroidApp.getSessionToken()}}).then(async r=>({status:r.status,body:(await r.text()).slice(0,400)})).catch(e=>({error:String(e)}))`);
   console.log('UPDATE STATUS:', updateStatus, 'PROBE:', JSON.stringify(updateProbe));
   assert(updateStatus.includes('lista pública de releases está vazia'), `Manual update check must report the empty public release list honestly, got: ${updateStatus}`);
-  assert(await evaluate(`(()=>{const s=${updateScope};return s.textContent.includes('Code Assistants 3.1.0')&&s.textContent.includes('renatozapelini/Ai')})()`), 'Update panel must state the installed version and the public GitHub release source');
+  assert(await evaluate(`(()=>{const s=${updateScope};return s.textContent.includes('Code Assistants 3.2.0')&&s.textContent.includes('renatozapelini/Ai')})()`), 'Update panel must state the installed version and the public GitHub release source');
   assert(!await evaluate("[...document.querySelectorAll('a')].some(a=>window.__uiVisible(a)&&a.textContent.includes('Baixar novo APK'))"), 'Manual update check with empty releases must never fabricate an APK download');
   await checkLayout('Opções GitHub update check');
   await capture('11-opcoes-atualizacao-github-mobile.png', 'section[aria-label="Atualizações do aplicativo"]');

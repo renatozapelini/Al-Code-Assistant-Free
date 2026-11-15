@@ -4,8 +4,8 @@ import { createCodeProject, restoreCodeProjects } from './codeAssistant';
 import { readFileSync } from 'node:fs';
 
 describe('atualização e pastas locais', () => {
-  const update = { ok: true, currentVersion: APP_VERSION, latestVersion: '3.2.0', available: true,
-    downloadUrl: 'https://github.com/renatozapelini/Ai/releases/download/v3.2.0/Code-Assistants-v3.2.0.apk' };
+  const update = { ok: true, currentVersion: APP_VERSION, latestVersion: '3.3.0', available: true,
+    downloadUrl: 'https://github.com/renatozapelini/Ai/releases/download/v3.3.0/Code-Assistants-v3.3.0.apk' };
   test('valida release mais novo e não inventa disponibilidade', () => {
     expect(validateUpdateInfo(update).available).toBe(true);
     expect(validateUpdateInfo({ ok: false, currentVersion: APP_VERSION, available: false }).available).toBe(false);

@@ -14,7 +14,7 @@ import static com.qoder2api.hub.Json.*;
 
 /** Public release metadata only. Never downloads, installs or forwards application credentials. */
 final class AppUpdates {
-    static final String CURRENT_VERSION = "3.1.0";
+    static final String CURRENT_VERSION = "3.2.0";
     static final String RELEASES_URL = "https://api.github.com/repos/renatozapelini/Ai/releases";
     static final int TIMEOUT_MS = 8000, BODY_LIMIT = 1024 * 1024;
     static final long APK_LIMIT = 100L * 1024 * 1024, SUCCESS_TTL = 3600000, FAILURE_TTL = 300000;
@@ -40,10 +40,13 @@ final class AppUpdates {
         this.connections = Objects.requireNonNull(connections); this.clock = Objects.requireNonNull(clock);
     }
 
-    synchronized Map<String,Object> check() {
+    synchronized Map<String,Object> check() { return check(false); }
+
+    // force=true is the human-triggered "Verificar atualização": never serve a stale cache.
+    synchronized Map<String,Object> check(boolean force) {
         long now = clock.getAsLong();
         long ttl = cached != null && yes(cached.get("ok")) ? SUCCESS_TTL : FAILURE_TTL;
-        if (cached != null && now >= cachedAt && now - cachedAt < ttl) return new LinkedHashMap<>(cached);
+        if (!force && cached != null && now >= cachedAt && now - cachedAt < ttl) return new LinkedHashMap<>(cached);
         Map<String,Object> result;
         try {
             byte[] bytes = fetch(); now = clock.getAsLong(); result = parsePayload(bytes, now);
