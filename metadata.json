@@ -1,0 +1,6 @@
+{
+  "name": "Qoder2API-Hub Android",
+  "description": "App Android e gateway multi-conta para Qoder (CN & Global) com OpenAI, Codex Responses e Anthropic Messages, OAuth dispositivo, painel de créditos e exportação APK.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
