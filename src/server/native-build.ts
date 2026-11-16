@@ -96,7 +96,7 @@ async function compileNative(): Promise<{ directory: string; dexFiles: string[] 
   await run(aapt, ['package', '-f', '-M', manifest, '-S', path.join(sourceRoot, 'res'),
     '-I', androidJar, '-J', generated, '-F', resources,
     '--min-sdk-version', '26', '--target-sdk-version', '34',
-    '--version-code', '37', '--version-name', '3.4.0'], directory);
+    '--version-code', '38', '--version-name', '3.4.1'], directory);
 
   const sources = [...await filesBelow(path.join(sourceRoot, 'java'), '.java'), ...await filesBelow(generated, '.java')];
   const sourceArgs = path.join(directory, 'javac.args');
