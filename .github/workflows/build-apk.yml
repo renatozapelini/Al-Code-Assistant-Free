@@ -1,4 +1,4 @@
-name: Build and publish APK
+name: Build and publish APK and EXE
 
 on:
   workflow_dispatch:
@@ -71,19 +71,16 @@ jobs:
           test -f "build/Code-Assistants-v${{ inputs.version }}-source.zip"
           ls -l build
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - name: Upload APK assets
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ inputs.version }}
-          name: Code Assistants v${{ inputs.version }}
-          body_path: release-notes/v${{ inputs.version }}.md
-          fail_on_unmatched_files: true
-          files: |
+          name: android-assets
+          if-no-files-found: error
+          path: |
             build/Code-Assistants-v${{ inputs.version }}.apk
             build/Code-Assistants-v${{ inputs.version }}-source.zip
 
   exe:
-    needs: apk
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +101,37 @@ jobs:
           test -f "build/Code-Assistants-v${{ inputs.version }}.exe"
           ls -l build
 
-      - name: Attach EXE to release
+      - name: Upload EXE asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-assets
+          if-no-files-found: error
+          path: build/Code-Assistants-v${{ inputs.version }}.exe
+
+  # GitHub não aceita adicionar arquivos a um release já publicado (releases
+  # imutáveis), então os três arquivos sobem juntos, de uma só vez.
+  release:
+    needs: [apk, exe]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-assets'
+          path: build
+          merge-multiple: true
+
+      - name: Check release files
+        run: |
+          test -f "build/Code-Assistants-v${{ inputs.version }}.apk"
+          test -f "build/Code-Assistants-v${{ inputs.version }}.exe"
+          test -f "build/Code-Assistants-v${{ inputs.version }}-source.zip"
+          test -f "release-notes/v${{ inputs.version }}.md"
+          ls -l build
+
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version }}
@@ -112,4 +139,6 @@ jobs:
           body_path: release-notes/v${{ inputs.version }}.md
           fail_on_unmatched_files: true
           files: |
+            build/Code-Assistants-v${{ inputs.version }}.apk
             build/Code-Assistants-v${{ inputs.version }}.exe
+            build/Code-Assistants-v${{ inputs.version }}-source.zip
