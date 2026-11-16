@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, ExternalLink, RefreshCw } from 'lucide-react';
 
-export const APP_VERSION = '3.2.1';
+export const APP_VERSION = '3.3.1';
 interface UpdateInfo {
   ok: boolean; currentVersion: string; latestVersion?: string; available: boolean;
   downloadUrl?: string; releaseUrl?: string; checkedAt?: number; message?: string;

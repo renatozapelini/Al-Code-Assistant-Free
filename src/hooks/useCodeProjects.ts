@@ -126,6 +126,29 @@ export function useCodeProjects(apiFetch: (path: string, init?: RequestInit) => 
       setError(null); return true;
     } catch (e) { handleError(e); return false; }
   }, [saveProject, handleError]);
+  const renameProject = useCallback((id: string, rawName: string) => {
+    try {
+      if (runner.current?.project.id === id) throw new Error('Pause a execução antes de renomear o projeto.');
+      const name = rawName.trim();
+      if (!name || name.length > 200) throw new Error('Use um nome de 1 a 200 caracteres.');
+      const project = list.current.find((p) => p.id === id);
+      if (!project) return false;
+      if (project.name === name) return true;
+      saveProject({ ...project, name, updatedAt: Date.now(),
+        events: [...project.events, { id: crypto.randomUUID(), at: Date.now(), type: 'edit', message: `Projeto renomeado para “${name}”.` }].slice(-150) });
+      setError(null); return true;
+    } catch (e) { handleError(e); return false; }
+  }, [saveProject, handleError]);
+  const deleteProject = useCallback((id: string) => {
+    try {
+      if (runner.current?.project.id === id) throw new Error('Pause a execução antes de apagar o projeto.');
+      if (!list.current.some((p) => p.id === id)) return false;
+      const next = list.current.filter((p) => p.id !== id);
+      saveList(next);
+      setActiveId((current) => (current === id ? next[0]?.id ?? null : current));
+      setError(null); return true;
+    } catch (e) { handleError(e); return false; }
+  }, [saveList, handleError]);
   const recordBuild = useCallback((id: string, revision: number, result: { ok: boolean; stdout?: string; stderr?: string; script?: string }) => {
     const project = list.current.find((p) => p.id === id);
     if (!project) return;
@@ -134,5 +157,5 @@ export function useCodeProjects(apiFetch: (path: string, init?: RequestInit) => 
         message: `${result.script || 'build'} da revisão ${revision}: ${result.ok ? 'processo terminou com sucesso' : 'falhou'}. ${result.stderr?.slice(-1200) || result.stdout?.slice(-1200) || ''}` }].slice(-150) });
     } catch (e) { handleError(e); }
   }, [saveProject, handleError]);
-  return { projects, activeId, busyId, error, create, setExecutionBlocked, select: setActiveId, run, pause, saveFile, saveFiles, exportProject, requestChange, configureProviders, recordBuild };
+  return { projects, activeId, busyId, error, create, setExecutionBlocked, select: setActiveId, run, pause, saveFile, saveFiles, exportProject, requestChange, configureProviders, renameProject, deleteProject, recordBuild };
 }

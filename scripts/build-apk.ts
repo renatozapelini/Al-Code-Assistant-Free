@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildSignedAndroidApk } from '../src/server/apkBuilder.ts';
 
 // Compila o motor Java nativo, empacota a interface construída e assina o APK.
 // A versão sai do próprio AndroidManifest.xml para o arquivo nunca divergir do app.
-const root = path.resolve(import.meta.dir, '..');
+// fileURLToPath funciona tanto no bun quanto no node (sem depender de import.meta.dir).
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 process.chdir(root);
 
 const manifest = fs.readFileSync(path.join(root, 'src/server/android-native/AndroidManifest.xml'), 'utf8');

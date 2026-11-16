@@ -4,8 +4,10 @@ import { createCodeProject, restoreCodeProjects } from './codeAssistant';
 import { readFileSync } from 'node:fs';
 
 describe('atualização e pastas locais', () => {
-  const update = { ok: true, currentVersion: APP_VERSION, latestVersion: '3.3.0', available: true,
-    downloadUrl: 'https://github.com/renatozapelini/Al-Code-Assistant-Free/releases/download/v3.3.0/Code-Assistants-v3.3.0.apk' };
+  // A versão mais nova é derivada da instalada para o teste não quebrar a cada release.
+  const latestVersion = APP_VERSION.replace(/\.(\d+)$/, (_all, patch: string) => `.${Number(patch) + 1}`);
+  const update = { ok: true, currentVersion: APP_VERSION, latestVersion, available: true,
+    downloadUrl: `https://github.com/renatozapelini/Al-Code-Assistant-Free/releases/download/v${latestVersion}/Code-Assistants-v${latestVersion}.apk` };
   test('valida release mais novo e não inventa disponibilidade', () => {
     expect(validateUpdateInfo(update).available).toBe(true);
     expect(validateUpdateInfo({ ok: false, currentVersion: APP_VERSION, available: false }).available).toBe(false);

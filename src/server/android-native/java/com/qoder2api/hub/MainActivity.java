@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -332,6 +333,22 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public String getSessionToken() {
             Gateway gateway = runningGateway;
             return bridgeTrusted && gateway != null ? gateway.sessionToken() : "";
+        }
+        /** Lê a área de transferência para o fluxo "conectar grátis" (só com o app em foco). */
+        @JavascriptInterface public String readClipboardText() {
+            if (!bridgeTrusted) return "";
+            try {
+                ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (manager == null || !manager.hasPrimaryClip()) return "";
+                ClipData clip = manager.getPrimaryClip();
+                if (clip == null || clip.getItemCount() == 0) return "";
+                CharSequence text = clip.getItemAt(0).coerceToText(MainActivity.this);
+                String value = text == null ? "" : text.toString().trim();
+                // Uma chave de API não passa disso; ignora textos gigantes por segurança.
+                return value.length() > 4096 ? "" : value;
+            } catch (RuntimeException failure) {
+                return "";
+            }
         }
         @JavascriptInterface public String getReminderSettings() {
             return bridgeTrusted ? ReminderScheduler.getSettings(MainActivity.this) : bridgeError("Interface local indisponível.");

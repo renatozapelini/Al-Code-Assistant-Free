@@ -1,4 +1,7 @@
 export type ProjectStatus = 'idle' | 'running' | 'paused' | 'waiting' | 'review';
+// Nuvem: IAs hospedadas com chave de API. Local: modelos/servidores na própria
+// rede (Ollama, LM Studio, 9router local), sem depender de chave na nuvem.
+export type ProjectMode = 'cloud' | 'local';
 export interface CodeToolCall {
   id: string; type: 'function'; function: { name: string; arguments: string };
 }
@@ -7,7 +10,7 @@ export interface CodeMessage {
   tool_calls?: CodeToolCall[]; tool_call_id?: string;
 }
 export interface CodeProject {
-  id: string; name: string; goal: string; blueprint: string; providerIds: string[];
+  id: string; name: string; goal: string; blueprint: string; providerIds: string[]; mode: ProjectMode;
   status: ProjectStatus; files: Record<string, string>;
   tasks: { id: string; title: string; status: 'pending' | 'in_progress' | 'completed' }[];
   events: { id: string; at: number; type: string; message: string; providerId?: string }[];
@@ -19,7 +22,7 @@ export interface CodeProject {
 }
 export interface CreateProjectInput {
   name: string; goal: string; blueprint?: string; providerIds: string[];
-  files?: Record<string, string>; maxTurns?: number;
+  files?: Record<string, string>; maxTurns?: number; mode?: ProjectMode;
 }
 export interface AssistantReply {
   providerId: string; model: string; message: CodeMessage; finishReason?: string;
@@ -110,7 +113,7 @@ export function createCodeProject(input: CreateProjectInput): CodeProject {
   const maxTurns = input.maxTurns ?? 40;
   if (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 120) throw new Error('Use entre 1 e 120 rodadas de IA.');
   if (input.blueprint && bytes(input.blueprint) > 100000) throw new Error('Blueprint muito grande.');
-  return { id: uid(), name, goal, blueprint: input.blueprint ?? '', providerIds: [...new Set(input.providerIds)],
+  return { id: uid(), name, goal, blueprint: input.blueprint ?? '', providerIds: [...new Set(input.providerIds)], mode: input.mode === 'local' ? 'local' : 'cloud',
     files, status: 'idle', tasks: [], events: [], turn: 0, maxTurns, summary: '', updatedAt: Date.now(),
     revision: 0, exchanges: [], receipts: {} };
 }
@@ -354,6 +357,7 @@ export function restoreCodeProjects(raw: string | null): CodeProject[] {
       || !Number.isInteger(value.turn) || !Number.isInteger(value.maxTurns) || !value.receipts) throw new Error('Checkpoint de projeto inválido.');
     validateProjectFiles(value.files);
     compactCheckpoint(value as CodeProject);
+    if ((value as CodeProject).mode !== 'local') (value as CodeProject).mode = 'cloud';
     if (value.status === 'running' || value.status === 'waiting') {
       value.status = 'paused'; value.error = 'O aplicativo foi reaberto. Retome do checkpoint salvo.';
     }

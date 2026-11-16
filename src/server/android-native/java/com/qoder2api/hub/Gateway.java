@@ -194,6 +194,7 @@ public final class Gateway {
             List<Object> created = state.addProviders(items, discovery); return json(obj("ok", true, "providers", created, "count", created.size()));
         }
         if (p.equals("/api/app/providers/discover") && method.equals("POST")) return json(catalog.discover());
+        if (p.equals("/api/app/providers/models") && method.equals("POST")) return json(providerModels(body(r, bytes)));
         if (p.startsWith("/api/app/providers/")) {
             String[] segments = p.substring("/api/app/providers/".length()).split("/", -1);
             if (segments.length == 1 && method.equals("PATCH")) return editProvider(segments[0], body(r, bytes), "patch");
@@ -246,6 +247,33 @@ public final class Gateway {
             Map<String,Object> completion = attempt(p, canonical, 15000); record(p, completion, null, false, started);
             return json(obj("ok", true, "message", "Provider returned a validated completion", "latencyMs", System.currentTimeMillis()-started, "provider", HubState.safeProvider(HubState.find(state.providers(), "id", id))));
         } catch (Failure e) { record(p, null, e, false, started); return json(obj("ok", false, "message", e.getMessage(), "status", e.status)); }
+    }
+    /**
+     * Lista os modelos realmente disponíveis na chave do usuário, em vez de confiar em
+     * nomes fixos que ficam obsoletos (e causam 404). Usa o próprio /models do provedor.
+     */
+    private Map<String,Object> providerModels(Map<String,Object> b) throws IOException {
+        String baseUrl, key, provider = b.containsKey("provider") ? str(b.get("provider")) : "custom";
+        try { baseUrl = HubState.baseUrl(b.get("baseUrl")); key = str(b.get("apiKey")); }
+        catch (RuntimeException e) { return obj("ok", false, "models", arr(), "message", "Endereço da API inválido."); }
+        boolean gemini = "gemini".equals(provider);
+        try {
+            Map<String,Object> payload = fetch(baseUrl + "/models", null, key, gemini ? "gemini" : "bearer", 15000, 4*1024*1024, upstreams);
+            List<Object> ids = arr(); Set<String> seen = new HashSet<>();
+            for (Object raw : list(payload.get("data"))) addModel(ids, seen, str(map(raw).get("id")));
+            if (ids.isEmpty()) for (Object raw : list(payload.get("models"))) {
+                Map<String,Object> m = map(raw); String id = str(m.containsKey("name") ? m.get("name") : m.get("id"));
+                if (id.startsWith("models/")) id = id.substring("models/".length());
+                addModel(ids, seen, id);
+            }
+            return obj("ok", true, "models", ids, "count", ids.size());
+        } catch (Failure e) { return obj("ok", false, "models", arr(), "message", e.getMessage(), "status", e.status); }
+        catch (RuntimeException e) { return obj("ok", false, "models", arr(), "message", "Não foi possível listar os modelos deste provedor."); }
+    }
+    private static void addModel(List<Object> ids, Set<String> seen, String id) {
+        if (id == null) return; String value = id.trim();
+        if (value.isEmpty() || value.length() > 200 || value.matches("(?s).*[\\s\\x00-\\x1f\\x7f].*")) return;
+        if (seen.add(value)) ids.add(value);
     }
     private Reply assistant(Map<String,Object> b) throws IOException {
         List<Object> all = state.providers(); Set<String> known = new HashSet<>(); for (Object raw : all) known.add(str(map(raw).get("id")));

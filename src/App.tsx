@@ -4,6 +4,7 @@ import { Analytics } from './components/Analytics';
 import { BottomNav } from './components/BottomNav';
 import { MobileChatPanel } from './components/MobileChatPanel';
 import { ModelsPanel } from './components/ModelsPanel';
+import { QuickConnectPanel } from './components/QuickConnectPanel';
 import { ScriptGeneratorPanel } from './components/ScriptGeneratorPanel';
 import { TopBar } from './components/TopBar';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -123,6 +124,7 @@ export default function App() {
             view="home" onConfigureProviders={code.configureProviders} onExecutionBlocked={code.setExecutionBlocked}
             onRun={(id) => void code.run(id)} onPause={code.pause} onSaveFile={code.saveFile} onImportFiles={code.saveFiles} onRequestChange={code.requestChange}
             onExport={code.exportProject} onNavigate={navigate} nativeAndroid={nativeAndroid}
+            onRenameProject={code.renameProject} onDeleteProject={code.deleteProject}
             onBuild={(id) => { if (!code.busyId) {
               if (nativeAndroid) code.exportProject(id);
               else setBuildProject(code.projects.find((p) => p.id === id) ?? null);
@@ -164,7 +166,13 @@ export default function App() {
           />
         </div>
 
-        <div hidden={activeTab !== 'apis'}>
+        <div hidden={activeTab !== 'apis'} className="space-y-6">
+          <QuickConnectPanel
+            providers={overview?.providers ?? []}
+            settings={overview?.settings}
+            apiFetch={apiFetch}
+            onProvidersChanged={() => void loadAppData()}
+          />
           <AiApisPanel
             providers={overview?.providers ?? []}
             settings={overview?.settings}

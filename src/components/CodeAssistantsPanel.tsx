@@ -4,19 +4,24 @@ import {
   ArrowUp,
   Bot,
   Check,
+  Cloud,
   Download,
+  Edit3,
   Eye,
   FileCode2,
   FolderOpen,
+  HardDrive,
   Pause,
   Play,
   Plus,
   Save,
   ShieldCheck,
   Terminal,
+  Trash2,
+  X,
 } from 'lucide-react';
 import type { NavTab, SafeProviderSummary } from '../types/hub';
-import type { CodeProject, CreateProjectInput } from '../utils/codeAssistant';
+import type { CodeProject, CreateProjectInput, ProjectMode } from '../utils/codeAssistant';
 
 export interface CodeAssistantsPanelProps {
   projects: CodeProject[];
@@ -29,6 +34,8 @@ export interface CodeAssistantsPanelProps {
   onCreate: (input: CreateProjectInput) => string | null;
   view?: 'home' | 'chat';
   onConfigureProviders?: (id: string, providerIds: string[]) => boolean;
+  onRenameProject: (id: string, name: string) => boolean;
+  onDeleteProject: (id: string) => boolean;
   onSelect: (id: string) => void;
   onRun: (id: string) => void;
   onPause: (id: string) => void;
@@ -70,6 +77,27 @@ const eventLabels: Record<string, string> = {
   completed: 'Trabalho encerrado pela IA',
   error: 'Erro',
 };
+
+// Um provedor é "local" quando o endereço aponta para a própria máquina ou a
+// rede local (Ollama, LM Studio, 9router local). O resto é nuvem (com chave).
+function isLocalBaseUrl(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
+      || host.startsWith('192.168.') || host.startsWith('10.');
+  } catch {
+    return false;
+  }
+}
+
+const modeInfo: Record<ProjectMode, { label: string; hint: string }> = {
+  cloud: { label: 'Nuvem', hint: 'IAs hospedadas, autenticadas com chave de API.' },
+  local: { label: 'Local', hint: 'Modelos e servidores na sua rede, sem chave na nuvem.' },
+};
+
+function providerMatchesMode(baseUrl: string, mode: ProjectMode): boolean {
+  return isLocalBaseUrl(baseUrl) === (mode === 'local');
+}
 
 const MAX_IMPORT_FILES = 200;
 const MAX_FILE_BYTES = 200000;
@@ -238,6 +266,10 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
   const info = statusInfo[project.status];
   const currentProvider = providers.find((provider) => provider.id === project.activeProviderId);
   const hasAvailableProvider = providers.some((provider) => provider.enabled && project.providerIds.includes(provider.id));
+  const teamProviders = useMemo(
+    () => providers.filter((provider) => project.providerIds.includes(provider.id) || providerMatchesMode(provider.baseUrl, project.mode)),
+    [providers, project.providerIds, project.mode]
+  );
   const budgetReached = project.turn >= project.maxTurns;
   const canPause = project.status === 'running' || project.status === 'waiting';
   const isHtml = /\.html?$/i.test(path);
@@ -277,7 +309,7 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <h2 className="break-words text-lg font-semibold text-zinc-100">{project.name}</h2>
-            <p className="text-xs text-zinc-400">Chat e arquivos desta pasta · {currentProvider?.name || 'Escolha a equipe de APIs'}</p>
+            <p className="text-xs text-zinc-400">Chat e arquivos desta pasta · {modeInfo[project.mode].label} · {currentProvider?.name || 'Escolha a equipe de APIs'}</p>
           </div>
           <span className={`text-xs font-semibold ${info.color}`} role="status">{info.label}</span>
         </div>
@@ -351,8 +383,8 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
           <p className="mt-1 break-words font-mono text-zinc-400">Modelo configurado: {currentProvider?.defaultModel || '—'}</p>
         </div>
         <fieldset disabled={locked || busyId !== null} className="space-y-2">
-          <legend className="text-xs text-zinc-400 pb-2">Marque as APIs na ordem em que devem trabalhar</legend>
-          {providers.map(provider => {
+          <legend className="text-xs text-zinc-400 pb-2">Marque as APIs {modeInfo[project.mode].label.toLowerCase()} na ordem em que devem trabalhar</legend>
+          {teamProviders.map(provider => {
             const selected = project.providerIds.includes(provider.id);
             return <label key={provider.id} className={`flex gap-2 items-center min-h-[44px] text-xs ${!provider.enabled && !selected ? 'opacity-50' : ''}`}>
               <input type="checkbox" checked={selected} disabled={!provider.enabled && !selected} onChange={e => {
@@ -362,7 +394,7 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
               <span>{selected ? `${project.providerIds.indexOf(provider.id) + 1}. ` : ''}{provider.name} · {provider.defaultModel}{!provider.enabled ? ' · desabilitada' : ''}</span>
             </label>;
           })}
-          {!providers.length && <p className="text-xs text-amber-300">Adicione suas chaves na aba APIs IA. Depois selecione a equipe aqui.</p>}
+          {!teamProviders.length && <p className="text-xs text-amber-300">{project.mode === 'local' ? 'Nenhum provedor local ainda. Adicione Ollama, LM Studio ou o endereço do seu 9router na aba APIs IA.' : 'Adicione suas chaves na aba APIs IA. Depois selecione a equipe aqui.'}</p>}
           <p className="text-[11px] text-zinc-400">A equipe é salva imediatamente ao marcar ou desmarcar. Depois use apenas o botão Iniciar assistentes.</p>
         </fieldset>
         <ol className="space-y-1.5" aria-label="Ordem de passagem entre APIs">
@@ -481,17 +513,21 @@ function ProjectWorkspace({ project, busyId, providers, onRun, onPause, onSaveFi
 
 export const CodeAssistantsPanel: React.FC<CodeAssistantsPanelProps> = ({
   projects, activeId, busyId, providers, error, prefill, onConsumePrefill,
-  onCreate, onSelect, onRun, onPause, onSaveFile, onImportFiles, onRequestChange, onExport, onBuild, nativeAndroid, onNavigate, view = 'home', onConfigureProviders, onExecutionBlocked,
+  onCreate, onSelect, onRun, onPause, onSaveFile, onImportFiles, onRequestChange, onExport, onBuild, nativeAndroid, onNavigate, view = 'home', onConfigureProviders, onExecutionBlocked, onRenameProject, onDeleteProject,
 }) => {
   const [showCreate, setShowCreate] = useState(Boolean(prefill));
   const [name, setName] = useState('');
   const [goal, setGoal] = useState('');
   const [blueprint, setBlueprint] = useState('');
   const [providerIds, setProviderIds] = useState<string[]>([]);
+  const [mode, setMode] = useState<ProjectMode>('cloud');
   const [maxTurns, setMaxTurns] = useState('40');
   const [initialFiles, setInitialFiles] = useState<Record<string, string>>({});
   const [importReading, setImportReading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [workspaceBlocked, setWorkspaceBlocked] = useState(false);
   const consumedPrefill = useRef<string | null>(null);
   const previousProjectCount = useRef(projects.length);
@@ -506,6 +542,7 @@ export const CodeAssistantsPanel: React.FC<CodeAssistantsPanelProps> = ({
   }, [projects.length]);
   const project = projects.find((item) => item.id === activeId);
   const orderedProviders = useMemo(() => [...providers].sort((a, b) => a.priority - b.priority), [providers]);
+  const modeProviders = useMemo(() => orderedProviders.filter((provider) => providerMatchesMode(provider.baseUrl, mode)), [orderedProviders, mode]);
   const validSelection = providerIds.every((id) => providers.some((provider) => provider.id === id && provider.enabled));
   const validBudget = Number.isSafeInteger(Number(maxTurns)) && Number(maxTurns) > 0 && Number(maxTurns) <= 120;
 
@@ -549,7 +586,7 @@ export const CodeAssistantsPanel: React.FC<CodeAssistantsPanelProps> = ({
     if (!name.trim() || !goal.trim()) { setFormError('Preencha o nome e o objetivo do projeto.'); return; }
     if (!validSelection) { setFormError('Remova da equipe as APIs indisponíveis ou selecione apenas APIs salvas e habilitadas.'); return; }
     if (!validBudget) { setFormError('O orçamento deve ser um número inteiro positivo de rodadas.'); return; }
-    const id = onCreate({ name: name.trim(), goal: goal.trim(), blueprint: blueprint.trim() || undefined, providerIds: [...providerIds], files: { ...initialFiles }, maxTurns: Number(maxTurns) });
+    const id = onCreate({ name: name.trim(), goal: goal.trim(), blueprint: blueprint.trim() || undefined, providerIds: [...providerIds], files: { ...initialFiles }, maxTurns: Number(maxTurns), mode });
     if (id) {
       setName(''); setGoal(''); setBlueprint(''); setInitialFiles({}); setShowCreate(false);
     }
@@ -579,17 +616,34 @@ export const CodeAssistantsPanel: React.FC<CodeAssistantsPanelProps> = ({
           <label className="block space-y-1 text-xs text-zinc-300"><span>Objetivo e critérios de aceite</span><textarea required rows={3} value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="O que precisa ser construído, restrições e como você vai validar?" className={inputClass} /></label>
           <details open={Boolean(blueprint)} className="text-xs text-zinc-400"><summary className="min-h-[44px] py-3 cursor-pointer">Pré-prompt / instruções técnicas (opcional)</summary><label className="block space-y-1"><span>Blueprint do projeto</span><textarea rows={4} value={blueprint} onChange={(event) => setBlueprint(event.target.value)} placeholder="Cole um pré-prompt ou gere a partir das suas ideias." className={`${inputClass} font-mono text-xs`} /></label></details>
           <fieldset className="space-y-2">
-            <legend className="text-xs font-semibold text-zinc-200">Equipe de APIs (opcional agora)</legend>
+            <legend className="text-xs font-semibold text-zinc-200">Onde a IA vai trabalhar</legend>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {(['cloud', 'local'] as const).map((option) => (
+                <button key={option} type="button" aria-pressed={mode === option}
+                  onClick={() => { if (mode !== option) { setMode(option); setProviderIds([]); } }}
+                  className={`min-h-[56px] rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${mode === option ? 'border-emerald-600/60 bg-emerald-950/25' : 'border-zinc-800 bg-[#090B0E]'}`}>
+                  <span className="flex items-center gap-2 text-xs font-semibold text-zinc-100">
+                    {option === 'cloud' ? <Cloud className="h-4 w-4 text-emerald-400" aria-hidden="true" /> : <HardDrive className="h-4 w-4 text-emerald-400" aria-hidden="true" />}
+                    {modeInfo[option].label}
+                  </span>
+                  <span className="mt-1 block text-[11px] text-zinc-400">{modeInfo[option].hint}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-zinc-400">Nuvem usa as APIs com chave. Local usa modelos ou servidores na sua rede (Ollama, LM Studio, 9router) — sem chave na nuvem.</p>
+          </fieldset>
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-semibold text-zinc-200">Equipe de APIs {mode === 'local' ? 'locais' : 'na nuvem'} (opcional agora)</legend>
             <p className="text-[11px] text-zinc-400">Marque na ordem desejada ou escolha depois no chat, em Equipe.</p>
-            {orderedProviders.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {orderedProviders.map((provider) => {
+            {modeProviders.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {modeProviders.map((provider) => {
                 const index = providerIds.indexOf(provider.id);
                 return <label key={provider.id} className={`flex min-h-[44px] items-center gap-3 rounded-xl border p-3 text-xs ${index >= 0 ? 'border-emerald-700/60 bg-emerald-950/20' : 'border-zinc-800 bg-[#090B0E]'} ${!provider.enabled && index < 0 ? 'opacity-50' : 'cursor-pointer'}`}>
                   <input type="checkbox" checked={index >= 0} disabled={!provider.enabled && index < 0} onChange={(event) => setProviderIds((previous) => event.target.checked ? [...previous, provider.id] : previous.filter((id) => id !== provider.id))} className="h-4 w-4 shrink-0 accent-emerald-500" />
                   <span className="min-w-0"><span className="block break-words text-zinc-200">{index >= 0 ? `${index + 1}. ` : ''}{provider.name}{!provider.enabled ? ' · Desabilitada' : ''}</span><span className="block break-words font-mono text-[11px] text-zinc-400">{provider.defaultModel}</span></span>
                 </label>;
               })}
-            </div> : <p className="text-xs text-amber-300">Você pode criar a pasta agora e adicionar a equipe depois, na aba APIs IA.</p>}
+            </div> : <p className="text-xs text-amber-300">{mode === 'local' ? 'Nenhum provedor local ainda. Adicione Ollama, LM Studio ou o endereço do seu 9router na aba APIs IA, ou crie o projeto e escolha a equipe depois.' : 'Você pode criar a pasta agora e adicionar a equipe depois, na aba APIs IA.'}</p>}
             {providerIds.length > 0 && <ol className="space-y-2" aria-label="Ordem dos assistentes selecionados">
               {providerIds.map((id, index) => {
                 const provider = providers.find((item) => item.id === id);
@@ -622,11 +676,47 @@ export const CodeAssistantsPanel: React.FC<CodeAssistantsPanelProps> = ({
           <h2 className="text-sm font-semibold">Projetos locais ({projects.length})</h2>
           {workspaceBlocked && <p role="status" className="text-[11px] text-amber-300">Salve ou limpe os rascunhos de arquivos e o pedido, e aguarde a importação antes de trocar ou criar um projeto.</p>}
           <nav className="max-h-[480px] space-y-2 overflow-y-auto" aria-label="Selecionar projeto">
-            {projects.map((item) => <button key={item.id} type="button" disabled={importReading || (workspaceBlocked && activeId !== item.id)} onClick={() => { if (!importReading && (!workspaceBlocked || activeId === item.id)) onSelect(item.id); }} aria-current={activeId === item.id ? 'true' : undefined} className={`min-h-[44px] w-full space-y-1 rounded-xl border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${activeId === item.id ? 'border-emerald-700/60 bg-emerald-950/25' : 'border-zinc-800 bg-[#090B0E] hover:bg-zinc-900'}`}>
-              <span className="block break-words text-xs font-semibold text-zinc-100">{item.name}</span>
-              <span className={`block text-[11px] ${statusInfo[item.status].color}`}>{statusInfo[item.status].label}{busyId === item.id ? ' · Ocupado' : ''}</span>
-              <span className="block text-[11px] text-zinc-400">{Object.keys(item.files).length} arquivos · {item.turn}/{item.maxTurns} rodadas</span>
-            </button>)}
+            {projects.map((item) => {
+              const renaming = renamingId === item.id;
+              const confirmingDelete = pendingDeleteId === item.id;
+              return (
+                <div key={item.id} className={`rounded-xl border ${activeId === item.id ? 'border-emerald-700/60 bg-emerald-950/25' : 'border-zinc-800 bg-[#090B0E]'}`}>
+                  {renaming ? (
+                    <div className="space-y-2 p-3">
+                      <label className="block text-[11px] text-zinc-400">Novo nome do projeto
+                        <input value={renameValue} maxLength={200} onChange={(event) => setRenameValue(event.target.value)} className={`${inputClass} mt-1`} />
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" disabled={!renameValue.trim()} onClick={() => { if (onRenameProject(item.id, renameValue)) { setRenamingId(null); setRenameValue(''); } }} className={primaryClass}><Check className="h-4 w-4" aria-hidden="true" /> Salvar nome</button>
+                        <button type="button" onClick={() => { setRenamingId(null); setRenameValue(''); }} className={buttonClass}><X className="h-4 w-4" aria-hidden="true" /> Cancelar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button type="button" disabled={importReading || (workspaceBlocked && activeId !== item.id)} onClick={() => { if (!importReading && (!workspaceBlocked || activeId === item.id)) onSelect(item.id); }} aria-current={activeId === item.id ? 'true' : undefined} className="min-h-[44px] w-full space-y-1 rounded-t-xl p-3 text-left hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                        <span className="block break-words text-xs font-semibold text-zinc-100">{item.name}</span>
+                        <span className={`block text-[11px] ${statusInfo[item.status].color}`}>{modeInfo[item.mode].label} · {statusInfo[item.status].label}{busyId === item.id ? ' · Ocupado' : ''}</span>
+                        <span className="block text-[11px] text-zinc-400">{Object.keys(item.files).length} arquivos · {item.turn}/{item.maxTurns} rodadas</span>
+                      </button>
+                      <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 px-3 py-2">
+                        {confirmingDelete ? (
+                          <>
+                            <span className="min-w-0 break-words text-[11px] text-red-300">Apagar “{item.name}” e seus arquivos?</span>
+                            <button type="button" onClick={() => { if (onDeleteProject(item.id)) setPendingDeleteId(null); }} className={`${buttonClass} border-red-800 text-red-300`}>Sim, apagar</button>
+                            <button type="button" onClick={() => setPendingDeleteId(null)} className={buttonClass}>Cancelar</button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" disabled={busyId === item.id} onClick={() => { setPendingDeleteId(null); setRenamingId(item.id); setRenameValue(item.name); }} className={`${buttonClass} px-2`} aria-label={`Renomear ${item.name}`}><Edit3 className="h-4 w-4" aria-hidden="true" /> Nome</button>
+                            <button type="button" disabled={busyId === item.id} onClick={() => { setRenamingId(null); setPendingDeleteId(item.id); }} className={`${buttonClass} px-2`} aria-label={`Apagar ${item.name}`}><Trash2 className="h-4 w-4" aria-hidden="true" /> Apagar</button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
             {!projects.length && <p className="text-xs text-zinc-400">Nenhum projeto salvo. Preencha o formulário para começar.</p>}
           </nav>
         </aside>

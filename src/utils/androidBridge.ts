@@ -12,6 +12,7 @@ interface AndroidBridge {
   getReminderSettings(): string;
   setReminderEnabled(enabled: boolean): string;
   exportProjectZip(base64: string, filename: string): string;
+  readClipboardText?(): string;
 }
 
 declare global {
@@ -36,6 +37,20 @@ export function appFetch(path: string, init?: RequestInit): Promise<Response> {
     }
   }
   return fetch(path, { ...init, headers });
+}
+
+/**
+ * Lê a área de transferência pelo bridge nativo (confiável no WebView do APK).
+ * Retorna undefined quando o bridge não existe; string vazia quando não há texto.
+ */
+export function readClipboardText(): string | undefined {
+  const bridge = androidBridge();
+  if (!bridge || typeof bridge.readClipboardText !== 'function') return undefined;
+  try {
+    return bridge.readClipboardText() ?? '';
+  } catch {
+    return undefined;
+  }
 }
 
 export function readReminder(): ReminderSettings | undefined {
