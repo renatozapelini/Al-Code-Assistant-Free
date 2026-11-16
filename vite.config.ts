@@ -5,12 +5,15 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
+  // O .exe serve os assets localmente; service worker ali só atrapalharia a atualização.
+  const desktopBuild = process.env.CODE_ASSISTANTS_DESKTOP_BUILD === '1';
   return {
     plugins: [
       react(),
       tailwindcss(),
-      VitePWA({
+      ...(desktopBuild ? [] : [VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: false,
         includeAssets: [
           'icon.svg',
           'apple-touch-icon.png',
@@ -89,11 +92,13 @@ export default defineConfig(() => {
           enabled: true,
           type: 'module',
         },
-      }),
+      })]),
     ],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
+        // O plugin PWA não existe no build do .exe; o stub mantém o mesmo import.
+        ...(desktopBuild ? { 'virtual:pwa-register': path.resolve(import.meta.dirname, 'src/utils/pwaStub.ts') } : {}),
       },
     },
     server: {

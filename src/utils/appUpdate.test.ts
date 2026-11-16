@@ -32,6 +32,18 @@ describe('atualização e pastas locais', () => {
     const data = await readUpdateResponse({ ok: true, status: 200, json: async () => update });
     expect(data.available).toBe(true); expect(data.downloadUrl).toBe(update.downloadUrl);
   });
+  test('aplicativo Windows usa o mesmo contrato com Code-Assistants-vX.Y.Z.exe', () => {
+    const exe = 'https://github.com/renatozapelini/Al-Code-Assistant-Free/releases/download';
+    const exeUpdate = { ...update, downloadUrl: `${exe}/v${latestVersion}/Code-Assistants-v${latestVersion}.exe` };
+    expect(validateUpdateInfo(exeUpdate, 'exe').available).toBe(true);
+    expect(validateUpdateInfo({ ...update, downloadUrl: `${exe}/${latestVersion}/Code-Assistants-v${latestVersion}.exe` }, 'exe').available).toBe(true);
+    for (const patch of [
+      { downloadUrl: update.downloadUrl },
+      { downloadUrl: exeUpdate.downloadUrl.replace('.exe', '.apk') },
+      { downloadUrl: exeUpdate.downloadUrl.replace('github.com', 'github.com.evil.test') },
+      { downloadUrl: exeUpdate.downloadUrl.replace('https:', 'http:') },
+    ]) expect(() => validateUpdateInfo({ ...exeUpdate, ...patch }, 'exe')).toThrow();
+  });
   test('503 nunca fabrica disponibilidade e corpo inválido vira erro de transporte', async () => {
     const transport = 'Não foi possível consultar atualizações (HTTP 503).';
     await expect(readUpdateResponse({ ok: false, status: 503, json: async () => { throw new Error('not json'); } })).rejects.toThrow(transport);
@@ -45,6 +57,9 @@ describe('atualização e pastas locais', () => {
     expect(readFileSync(new URL('../server/android-native/AndroidManifest.xml', import.meta.url), 'utf8')).toContain(`android:versionName="${APP_VERSION}"`);
     expect(readFileSync(new URL('../server/native-build.ts', import.meta.url), 'utf8')).toContain(`'--version-name', '${APP_VERSION}'`);
     expect(readFileSync(new URL('../server/android-native/java/com/qoder2api/hub/AppUpdates.java', import.meta.url), 'utf8')).toContain(`CURRENT_VERSION = "${APP_VERSION}"`);
+    // O .exe do Windows usa a mesma fonte de versão do APK.
+    expect(readFileSync(new URL('../version.ts', import.meta.url), 'utf8')).toContain(`APP_VERSION = '${APP_VERSION}'`);
+    expect(readFileSync(new URL('../server/winExeBuilder.ts', import.meta.url), 'utf8')).toContain('APP_VERSION');
   });
   test('pasta sem API é criada e restaurada, sem executar nada', () => {
     const project = createCodeProject({ name: 'Minha pasta', goal: 'Controle de estoque', blueprint: 'Pré-prompt revisado', providerIds: [] });

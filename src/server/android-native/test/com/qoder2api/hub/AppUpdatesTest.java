@@ -68,7 +68,7 @@ public final class AppUpdatesTest {
         eq(result.get("available"), true, "newer available");
         eq(result.get("downloadUrl"), download("3.10.1"), "only browser download URL");
         eq(result.get("releaseUrl"), BASE + "tag/v3.10.1", "canonical generated release URL");
-        eq(inspect(arr(release("3.2.9"), release("3.3.10"))).get("latestVersion"), "3.3.10", "numeric patch selection");
+        eq(inspect(arr(release("3.4.9"), release("3.4.10"))).get("latestVersion"), "3.4.10", "numeric patch selection");
         String huge = "3.123456789012345678901234567890.0";
         eq(inspect(arr(release("3.999.999"), release(huge))).get("latestVersion"), "3.999.999", "oversized semver rejected consistently with UI");
         eq(inspect(arr(release("3.99.99"), release("4.0.0"))).get("latestVersion"), "4.0.0", "future major version available");
@@ -114,7 +114,7 @@ public final class AppUpdatesTest {
         Map<String,Object> duplicate = release(NEWER); list(duplicate.get("assets")).add(copy(asset(duplicate))); noApk(arr(duplicate));
         Map<String,Object> mixed = release(NEWER); list(mixed.get("assets")).add(null); list(mixed.get("assets")).add(obj("name", "Other-App.apk"));
         eq(inspect(arr(null, obj(), mixed)).get("latestVersion"), NEWER, "unrelated/null entries ignored");
-        Map<String,Object> noNewApk = release("3.4.0"); noNewApk.put("assets", null);
+        Map<String,Object> noNewApk = release(CURRENT); noNewApk.put("assets", null);
         eq(inspect(arr(noNewApk, release(NEWER))).get("latestVersion"), NEWER, "largest validated APK, not unverified tag");
     }
 

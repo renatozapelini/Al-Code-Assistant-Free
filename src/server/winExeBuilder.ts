@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { ensureFreshDist } from './distHelper.ts';
+import { APP_VERSION } from '../version.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -44,9 +45,12 @@ export async function buildStandaloneWindowsExe(options: { includeAndroid?: bool
 
   buildInFlight = (async () => {
     const rootDir = process.cwd();
-    const outExe = path.join(os.tmpdir(), 'Code-Assistants.exe');
+    const outExe = path.join(os.tmpdir(), `Code-Assistants-v${APP_VERSION}.exe`);
 
-    const distDir = await ensureFreshDist();
+    // O executável não usa service worker: a interface vem dos próprios assets.
+    process.env.CODE_ASSISTANTS_DESKTOP_BUILD = '1';
+    const distDir = await ensureFreshDist(true);
+    delete process.env.CODE_ASSISTANTS_DESKTOP_BUILD;
 
     const collected: { rel: string; abs: string }[] = [];
     walkFiles(distDir, distDir, collected);
@@ -85,24 +89,47 @@ import { EMBEDDED_ASSETS } from ${JSON.stringify(assetsAbs)};
 if (!process.env.QD_DATA_DIR) {
   process.env.QD_DATA_DIR = path.join(os.homedir(), '.qoder2api-hub');
 }
+// Marca o aplicativo empacotado: o atualizador só troca o .exe quando esta
+// variável existe, nunca o runtime do Bun em desenvolvimento.
+process.env.CODE_ASSISTANTS_DESKTOP = '1';
 
 // Dynamic import AFTER QD_DATA_DIR is set: the store reads it at module load.
 const { createAssistantRouter } = await import(${JSON.stringify(hubRouterAbs)});
 
+const DESKTOP_VERSION = ${JSON.stringify(APP_VERSION)};
+const DESKTOP_BOOTSTRAP = 'window.CodeAssistantsDesktop=' + JSON.stringify({ version: DESKTOP_VERSION, platform: 'windows' }) + ';';
 const PORT = Number(process.env.PORT || 8790);
 const app = express();
 app.use(express.json({ limit: '25mb' }));
 app.use(createAssistantRouter());
 
-app.get("/api/app/download/windows-exe", (_req, res) => res.download(process.execPath, "Code-Assistants.exe"));
+app.get("/api/app/download/windows-exe", (_req, res) => res.download(process.execPath, "Code-Assistants-v" + DESKTOP_VERSION + ".exe"));
 app.get("/api/app/download/android-apk", (_req, res) => {
   res.status(503).json({ error: { message: "O APK atualizado das code assistants ainda não está disponível." } });
 });
 app.use(['/api', '/v1'], (_req, res) => res.status(404).json({ error: { type: 'not_found', message: 'Endpoint não encontrado.' } }));
 
+app.get('/desktop-bootstrap.js', (_req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.send(DESKTOP_BOOTSTRAP);
+});
+
+function page(res, asset) {
+  const html = Buffer.from(asset.b64, 'base64').toString('utf8')
+    .replace('</head>', '<script src="/desktop-bootstrap.js"></script></head>');
+  res.setHeader('Content-Type', asset.mime);
+  res.send(html);
+}
+
 app.get('*', (req, res) => {
   const reqPath = req.path === '/' ? '/index.html' : req.path;
-  const asset = EMBEDDED_ASSETS[reqPath] || EMBEDDED_ASSETS['/index.html'];
+  if (reqPath === '/index.html') {
+    const index = EMBEDDED_ASSETS['/index.html'];
+    if (!index) { res.status(404).send('Not found'); return; }
+    page(res, index);
+    return;
+  }
+  const asset = EMBEDDED_ASSETS[reqPath];
   if (!asset) {
     res.status(404).send('Not found');
     return;
@@ -111,7 +138,7 @@ app.get('*', (req, res) => {
   res.send(Buffer.from(asset.b64, 'base64'));
 });
 
-function openDesktopWindow(url: string): void {
+function openDesktopWindow(url) {
   if (process.platform !== 'win32') return;
   try {
     const child = spawn('cmd', ['/c', 'start', '', 'msedge', '--app=' + url], {
@@ -132,11 +159,20 @@ function openDesktopWindow(url: string): void {
   }
 }
 
-app.listen(PORT, '127.0.0.1', () => {
+const server = app.listen(PORT, '127.0.0.1', () => {
   const url = 'http://127.0.0.1:' + PORT;
-  console.log('Code Assistants Windows rodando em ' + url);
+  console.log('Code Assistants Windows ' + DESKTOP_VERSION + ' rodando em ' + url);
   console.log('Dados salvos em: ' + process.env.QD_DATA_DIR);
   openDesktopWindow(url);
+});
+
+// Uma segunda cópia apenas reabre a janela do aplicativo que já está rodando.
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    openDesktopWindow('http://127.0.0.1:' + PORT);
+    process.exit(0);
+  }
+  throw err;
 });
 `;
 
@@ -148,6 +184,9 @@ app.listen(PORT, '127.0.0.1', () => {
         'build',
         '--compile',
         '--target=bun-windows-x64',
+        // Sem prompt de comando junto da janela. Os metadados (título, versão,
+        // ícone) do .exe só podem ser gravados ao compilar no próprio Windows.
+        '--windows-hide-console',
         entryPath,
         '--outfile',
         outExe,

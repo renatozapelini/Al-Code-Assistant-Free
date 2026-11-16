@@ -3,6 +3,7 @@ import type { ProviderPresetId } from '../types/hub.ts';
 import { PROVIDER_PRESETS } from './providerPresets.ts';
 import { getExternalCatalog } from './externalCatalog.ts';
 import { createProjectBuildRouter } from './projectBuild.ts';
+import { createDesktopUpdateRouter } from './desktopUpdates.ts';
 import { handleChatCompletions } from './multiAiProxy.ts';
 import {
   addDiscoveredProvider,
@@ -34,6 +35,9 @@ export function createAssistantRouter(): express.Router {
   });
 
   router.use('/api/app/project-build', createProjectBuildRouter());
+  // Atualizador do aplicativo Windows: consulta os releases públicos e troca o
+  // .exe em uso. No APK quem responde esse caminho é o motor Java.
+  router.use(createDesktopUpdateRouter());
 
   // Old state stays on disk; public gateway and account routes are not mounted.
   router.use(["/v1", "/credits", "/ping", "/healthz", "/livez", "/readyz", "/api/hub"], (_req, res) => {

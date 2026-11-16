@@ -14,6 +14,8 @@ import { ProjectBuildReview } from './components/ProjectBuildReview';
 import { QoderAccessPanel } from './components/QoderAccessPanel';
 import { androidBridge, appFetch } from './utils/androidBridge';
 import { AppUpdatePanel } from './components/AppUpdatePanel';
+import { DesktopSidebar } from './components/DesktopSidebar';
+import { isDesktopApp } from './utils/platform';
 import type { CodeProject } from './utils/codeAssistant';
 import type { HubOverview, NavTab, QoderModel } from './types/hub';
 
@@ -80,12 +82,16 @@ export default function App() {
   const totalActiveEndpoints = overview?.totals.providersEnabled ?? 0;
 
   return (
-    <div className="min-h-screen bg-[#090B0E] text-zinc-100 flex flex-col">
+    <div className="min-h-screen bg-[#090B0E] text-zinc-100 flex flex-col lg:flex-row">
+      <DesktopSidebar activeTab={activeTab} onSelectTab={navigate} online={isOnline} desktop={isDesktopApp()} />
+      <div className="min-w-0 flex-1 flex flex-col">
+      <div className="lg:hidden">
       <TopBar
         activeTab={activeTab}
         onSelectTab={navigate}
         onQuickAddApi={() => setActiveTab('apis')}
       />
+      </div>
 
       {!isOnline && (
         <div className="bg-amber-950/70 border-b border-amber-800/60 px-4 py-2 text-xs text-amber-200 text-center">
@@ -108,7 +114,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 min-w-0 w-full max-w-7xl mx-auto px-3 sm:px-6 pt-4 pb-24 md:pb-12">
+      <main className="flex-1 min-w-0 w-full max-w-7xl lg:max-w-[1500px] mx-auto px-3 sm:px-6 lg:px-8 pt-4 lg:pt-6 pb-24 md:pb-12 lg:pb-16">
         <div className="mb-3"><AppUpdatePanel apiFetch={apiFetch} expanded={activeTab === 'options'} /></div>
         {activeTab === 'options' && <section className="rounded-xl border border-zinc-800 bg-[#12151B] p-4 space-y-3">
           <h1 className="text-lg font-semibold">Opções</h1>
@@ -218,6 +224,7 @@ export default function App() {
         accountsCount={overview?.totals.accountsEnabled ?? 0}
         providersCount={overview?.totals.providersEnabled ?? 0}
       />
+      </div>
     </div>
   );
 }
