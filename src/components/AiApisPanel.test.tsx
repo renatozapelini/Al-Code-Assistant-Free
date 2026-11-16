@@ -174,7 +174,8 @@ describe('AiApisPanel: apresentação segura', () => {
       expect(target).toBe('_self');
     }
     expect(html).toContain('Registrar / obter chave (OpenAI)');
-    expect(html).toContain('Mostrar opções com cota grátis');
+    expect(html).toContain('Ocultar sugestões grátis');
+    expect(html).toContain('aparecem por padrão no catálogo');
     expect(html).not.toContain('Registrar / obter chave (Google Gemini)');
     expect(html).toContain('Qoder · assistente usado no desenvolvimento');
     expect(html).toContain('não é tratado aqui como API de inferência');

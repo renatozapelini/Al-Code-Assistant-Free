@@ -27,7 +27,7 @@ public final class AppUpdatesTest {
     private static Map<String,Object> asset(Map<String,Object> release) { return map(list(release.get("assets")).get(0)); }
     private static Map<String,Object> contract(Map<String,Object> result) {
         check(result.get("ok") instanceof Boolean, "ok boolean");
-        eq(result.get("currentVersion"), "3.2.0", "configured current version");
+        eq(result.get("currentVersion"), "3.2.1", "configured current version");
         check(result.get("available") instanceof Boolean, "available boolean");
         check(result.get("checkedAt") instanceof Number, "checkedAt timestamp");
         check(!str(result.get("message")).isEmpty(), "message explains outcome");
@@ -65,7 +65,7 @@ public final class AppUpdatesTest {
         String huge = "3.123456789012345678901234567890.0";
         eq(inspect(arr(release("3.999.999"), release(huge))).get("latestVersion"), "3.999.999", "oversized semver rejected consistently with UI");
         eq(inspect(arr(release("3.99.99"), release("4.0.0"))).get("latestVersion"), "4.0.0", "future major version available");
-        result = inspect(arr(release("3.2.0")));
+        result = inspect(arr(release("3.2.1")));
         eq(result.get("ok"), true, "current APK validated"); eq(result.get("available"), false, "equal version not an update");
         check(!result.containsKey("downloadUrl"), "no current-version download prompt");
         check(str(result.get("message")).contains("Somente o APK"), "current outcome scoped to validated list, not falsely up to date");
@@ -151,7 +151,7 @@ public final class AppUpdatesTest {
         Map<String,List<String>> headers = sent.getRequestProperties();
         eq(headers.keySet(), new HashSet<>(Arrays.asList("Accept", "User-Agent", "X-GitHub-Api-Version", "Accept-Encoding")), "only public metadata headers; no tokens or user keys");
         eq(sent.getRequestProperty("Accept"), "application/vnd.github+json", "GitHub accept");
-        eq(sent.getRequestProperty("User-Agent"), "Code-Assistants/3.2.0", "identifying user agent");
+        eq(sent.getRequestProperty("User-Agent"), "Code-Assistants/3.2.1", "identifying user agent");
         eq(sent.getRequestProperty("X-GitHub-Api-Version"), "2022-11-28", "pinned API version");
         first.put("downloadUrl", "https://evil.example/" + SECRET);
         time.set(1000 + AppUpdates.SUCCESS_TTL - 1); contract(client.check()); eq(source.hits.get(), 1, "success cache lasts one hour");

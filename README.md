@@ -16,7 +16,7 @@ Desenvolvido para Renato Zapelini com assistência do **Qoder**. O Qoder partici
 - Cadastro de várias chaves, inclusive várias chaves do mesmo provedor.
 - Teste real das APIs, com latência ou motivo da recusa.
 - Exportação dos arquivos do projeto em ZIP.
-- Verificação manual de nova versão pelos releases públicos deste repositório.
+- Painel de atualização sempre visível na tela inicial, com ícone do app, indicador de carregamento e verificação manual pelos releases públicos deste repositório.
 
 ## Provedores e assistentes
 
@@ -25,7 +25,7 @@ O aplicativo inclui configurações para OpenAI, Google Gemini, Anthropic/Claude
 - **Google Gemini:** usa a API nativa `generateContent` e o cabeçalho `x-goog-api-key`; não é tratado como OpenAI-compatible.
 - **Anthropic:** é a empresa responsável pelo Claude. O formato Anthropic Messages é mostrado somente onde faz sentido, especialmente Claude e endpoints personalizados.
 - **Qoder:** login assistido pelo site oficial e registro local de múltiplos perfis. O app não captura senha, cookie, CAPTCHA, token ou sessão do navegador.
-- Opções com cota grátis ficam ocultas por padrão e só aparecem quando o usuário decide mostrá-las. Nada é adicionado automaticamente.
+- Opções com cota grátis aparecem por padrão no catálogo. Elas não são ativadas nem adicionadas à fila automaticamente; credenciais e limites continuam sob controle do usuário.
 
 ## Privacidade e segurança
 

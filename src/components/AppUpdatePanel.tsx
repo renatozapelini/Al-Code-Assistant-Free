@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, ExternalLink, RefreshCw } from 'lucide-react';
 
-export const APP_VERSION = '3.2.0';
+export const APP_VERSION = '3.2.1';
 interface UpdateInfo {
   ok: boolean; currentVersion: string; latestVersion?: string; available: boolean;
   downloadUrl?: string; releaseUrl?: string; checkedAt?: number; message?: string;
@@ -53,13 +53,17 @@ export function AppUpdatePanel({ apiFetch, expanded }: { apiFetch: (path: string
     const timer = setInterval(() => void check(controller.signal), 3600000);
     return () => { controller.abort(); clearInterval(timer); };
   }, [check]);
-  if (!expanded && !info?.available) return null;
   return <section aria-label="Atualizações do aplicativo" className="rounded-xl border border-zinc-800 bg-[#12151B] p-4 space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h2 className="font-semibold text-sm">{info?.available ? `Nova versão ${info.latestVersion} disponível` : `Code Assistants ${APP_VERSION}`}</h2>
+      <div className="flex items-center gap-3 min-w-0">
+        <img src="/pwa-192x192.png" alt="Code Assistants" width={40} height={40} className="h-10 w-10 shrink-0 rounded-xl border border-zinc-800 bg-[#090B0E]" />
+        <div className="min-w-0 space-y-0.5">
+          <h2 className="font-semibold text-sm">{info?.available ? `Nova versão ${info.latestVersion} disponível` : `Code Assistants ${APP_VERSION}`}</h2>
+          <p role="status" className="flex items-center gap-1.5 text-xs text-zinc-400"><RefreshCw className={`h-3.5 w-3.5 shrink-0 ${busy ? 'animate-spin text-emerald-300' : 'text-zinc-500'}`} aria-hidden="true" /><span className="min-w-0">{error || info?.message || 'Consultando releases do GitHub…'}</span></p>
+        </div>
+      </div>
       {expanded && <button type="button" disabled={busy} onClick={() => void check(undefined, true)} className="min-h-[44px] flex items-center gap-2 text-xs text-emerald-300 disabled:opacity-50"><RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} />{busy ? 'Verificando…' : 'Verificar atualização'}</button>}
     </div>
-    {expanded && <p role="status" className="text-xs text-zinc-400">{error || info?.message || 'Consultando releases do GitHub…'}</p>}
     {info?.available && <a href={info.downloadUrl} target="_self" rel="noreferrer" className="min-h-[44px] inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 text-xs font-semibold text-zinc-950"><Download className="w-4 h-4" />Baixar novo APK</a>}
     {expanded && <div className="rounded-lg border border-zinc-800 bg-[#090B0E] p-3 space-y-1.5 text-[11px] text-zinc-400">
       <p className="text-xs font-semibold text-zinc-200">GitHub conectado · renatozapelini/Al-Code-Assistant-Free</p>

@@ -1,0 +1,83 @@
+name: Build and publish APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão sem o "v" (ex.: 3.2.1) — precisa casar com android:versionName'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK 34
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$SDK" -name sdkmanager -type f | head -1)"; fi
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0"
+          # O motor nativo usa o aapt clássico (build-tools 34). Se por algum motivo
+          # ele não vier no pacote, pega de uma build-tools antiga que sempre o traz.
+          if [ ! -f "$SDK/build-tools/34.0.0/aapt" ]; then
+            "$SDKMANAGER" "build-tools;30.0.3"
+            cp "$SDK/build-tools/30.0.3/aapt" "$SDK/build-tools/34.0.0/aapt"
+            chmod +x "$SDK/build-tools/34.0.0/aapt"
+          fi
+          "$SDK/build-tools/34.0.0/aapt" version
+
+      - name: Conferir versão
+        run: |
+          MANIFEST_VERSION="$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' src/server/android-native/AndroidManifest.xml)"
+          echo "manifest=$MANIFEST_VERSION input=${{ inputs.version }}"
+          test "$MANIFEST_VERSION" = "${{ inputs.version }}"
+
+      - name: Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Tests
+        run: bun test || bun test
+
+      - name: Build APK
+        run: bun scripts/build-apk.ts
+
+      - name: Source ZIP
+        run: git archive --format=zip -o "build/Code-Assistants-v${{ inputs.version }}-source.zip" HEAD
+
+      - name: Check assets
+        run: |
+          test -f "build/Code-Assistants-v${{ inputs.version }}.apk"
+          test -f "build/Code-Assistants-v${{ inputs.version }}-source.zip"
+          ls -l build
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Code Assistants v${{ inputs.version }}
+          body_path: release-notes/v${{ inputs.version }}.md
+          fail_on_unmatched_files: true
+          files: |
+            build/Code-Assistants-v${{ inputs.version }}.apk
+            build/Code-Assistants-v${{ inputs.version }}-source.zip

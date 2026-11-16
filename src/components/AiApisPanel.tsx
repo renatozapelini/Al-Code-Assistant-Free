@@ -167,8 +167,8 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
   onProvidersChanged,
   onOpenQoder,
 }) => {
-  const [categoryFilter, setCategoryFilter] = useState<'all' | ProviderCategory>('major');
-  const [showFreeSuggestions, setShowFreeSuggestions] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<'all' | ProviderCategory>('all');
+  const [showFreeSuggestions, setShowFreeSuggestions] = useState(true);
   const [entryMode, setEntryMode] = useState<'rows' | 'bulk'>('rows');
   const [selectedPresetId, setSelectedPresetId] = useState<ProviderPresetId>('openai');
 
@@ -992,7 +992,7 @@ export const AiApisPanel: React.FC<AiApisPanelProps> = ({
             {showFreeSuggestions ? 'Ocultar sugestões grátis' : 'Mostrar opções com cota grátis'}
           </button>
         </div>
-        <p className="text-[11px] text-zinc-500">Opções com cota grátis ficam ocultas por padrão e nunca são adicionadas automaticamente. Mostre-as somente se quiser cadastrar uma chave delas.</p>
+        <p className="text-[11px] text-zinc-500">Opções com cota grátis aparecem por padrão no catálogo, mas nunca são ativadas nem adicionadas à fila automaticamente. Oculte-as se preferir ver apenas os provedores principais.</p>
 
         {/* Provider Preset Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
