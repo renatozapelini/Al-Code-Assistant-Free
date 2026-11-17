@@ -16,6 +16,26 @@
     <meta property="og:description" content="Crie projetos com assistentes de código, preserve arquivos e transfira automaticamente o trabalho para a próxima IA disponível." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function () {
+        // Desregistra service workers antigos que podem interceptar requisições
+        // e causar erro 404 ou impedir o app de se reconhecer como Windows.
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            for (var i = 0; i < registrations.length; i++) {
+              registrations[i].unregister();
+            }
+          });
+        }
+        // Se rodando pelo EXE (localhost), identifica como Windows para ativar
+        // barra lateral, atualização automática e login no GitHub.
+        if (typeof window !== 'undefined' &&
+          (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+          !window.CodeAssistantsDesktop) {
+          window.CodeAssistantsDesktop = { version: '0.0.0', platform: 'windows' };
+        }
+      })();
+    </script>
   </head>
   <body class="bg-[#090B0E] text-zinc-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-100">
     <div id="root"></div>
