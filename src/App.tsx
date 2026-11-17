@@ -41,6 +41,33 @@ export default function App() {
   const desktop = isDesktopApp();
   const code = useCodeProjects(apiFetch);
   const { importProjects } = code;
+
+  // Fallback: se a injeção do /desktop-bootstrap.js no HTML falhou (sem
+  // </head> ou service worker antigo interceptando), tenta buscar o script
+  // e definir window.CodeAssistantsDesktop para que o app se reconheça como
+  // Windows. Só roda no navegador, quando não é Android nem já detectado.
+  useEffect(() => {
+    if (desktop || nativeAndroid || typeof window === 'undefined') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/desktop-bootstrap.js', { signal: AbortSignal.timeout(3000) });
+        if (!cancelled && res.ok) {
+          const js = await res.text();
+          if (js && js.includes('CodeAssistantsDesktop')) {
+            // eslint-disable-next-line no-eval
+            eval(js);
+            if (!cancelled && isDesktopApp()) {
+              window.location.reload();
+            }
+          }
+        }
+      } catch {
+        // silencioso: o diagnóstico da tela de erro cobre o restante
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [desktop, nativeAndroid]);
   // Projetos já gravados por versão (updatedAt) para não reescrever o disco a
   // cada atualização de tela; a pasta é uma cópia fiel do checkpoint local.
   const writtenVersions = useRef(new Map<string, number>());
@@ -55,13 +82,14 @@ export default function App() {
       ]);
       if (!ovRes.ok) {
         let detail = '';
+        let ovStatus = ovRes.status;
         try {
           const payload = (await ovRes.json()) as { error?: { message?: string } };
           detail = payload?.error?.message || '';
         } catch {
           // resposta sem JSON: mantém só o status
         }
-        throw new Error(`Não foi possível carregar o serviço local (HTTP ${ovRes.status})${detail ? `: ${detail}` : '.'}`);
+        throw new Error(`Não foi possível carregar o serviço local (HTTP ${ovStatus})${detail ? `: ${detail}` : '.'}`);
       }
       const ovData = (await ovRes.json()) as HubOverview;
       setOverview(ovData);
@@ -72,7 +100,11 @@ export default function App() {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao conectar com o serviço local.';
-      setFetchError(desktop ? `${message} Veja o diagnóstico em /diagnostico ou o log em “Este computador”.` : message);
+      let extra = '';
+      if (desktop && /\(HTTP 404\)/.test(message)) {
+        extra = ' Pressione Ctrl+Shift+R para recarregar o cache e tente novamente.';
+      }
+      setFetchError(desktop ? `${message}${extra} Veja o diagnóstico em /diagnostico ou o log em “Este computador”.` : message);
     }
   }, [apiFetch, desktop]);
 

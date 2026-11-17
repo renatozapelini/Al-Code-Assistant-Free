@@ -174,8 +174,16 @@ app.get('/diagnostico', (_req, res) => {
 });
 
 function page(res, asset) {
-  const html = Buffer.from(asset.b64, 'base64').toString('utf8')
-    .replace('</head>', '<script src="/desktop-bootstrap.js"></script></head>');
+  let html = Buffer.from(asset.b64, 'base64').toString('utf8');
+  const bootstrap = '<script src="/desktop-bootstrap.js"></script>';
+  // Inje o bootstrap de forma robusta: head, body ou início do arquivo.
+  if (html.includes('</head>')) {
+    html = html.replace('</head>', bootstrap + '</head>');
+  } else if (html.includes('<body')) {
+    html = html.replace('<body', bootstrap + '<body');
+  } else {
+    html = bootstrap + html;
+  }
   res.setHeader('Content-Type', asset.mime);
   res.setHeader('Cache-Control', 'no-store');
   res.send(html);
