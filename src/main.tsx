@@ -13,19 +13,31 @@ const isLocalhost =
 // Desregistra service workers antigos que podem estar interceptando requisições
 // e causando erro 404 ou impedindo o app de se reconhecer como Windows.
 // Isso roda assim que o JavaScript carrega, antes de renderizar a interface.
+// Após o desregistro, recarrega a página para garantir que nenhum SW controle
+// as requisições (protegido contra loop infinito pelo sessionStorage).
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   void navigator.serviceWorker.getRegistrations().then((registrations) => {
+    const hadSw = registrations.length > 0;
     for (const registration of registrations) {
       void registration.unregister();
+    }
+    if (hadSw && !sessionStorage.getItem('code-assistants-sw-cleared')) {
+      sessionStorage.setItem('code-assistants-sw-cleared', '1');
+      window.location.reload();
     }
   });
 }
 
-// Se está rodando pelo EXE (localhost) e o HTML não injetou a identificação
-// do Windows, define aqui como fallback para o app se reconhecer como desktop.
+// Limpa a flag de limpeza de SW após o recarregamento, para não bloquear recargas futuras.
+if (typeof window !== 'undefined' && sessionStorage.getItem('code-assistants-sw-cleared')) {
+  sessionStorage.removeItem('code-assistants-sw-cleared');
+}
+
+// Se está rodando pelo EXE (localhost), garante a identificação do Windows
+// com a versão real do aplicativo. Sobrescreve qualquer valor anterior
+// (inclusive o placeholder 0.0.0 do index.html) para a versão exibida estar correta.
 if (
   isLocalhost &&
-  !isDesktopApp() &&
   typeof window !== 'undefined'
 ) {
   (window as Window & { CodeAssistantsDesktop?: { version: string; platform: string } }).CodeAssistantsDesktop = {
