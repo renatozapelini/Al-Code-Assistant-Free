@@ -14,7 +14,7 @@ import static com.qoder2api.hub.Json.*;
 
 /** Public release metadata only. Never downloads, installs or forwards application credentials. */
 final class AppUpdates {
-    static final String CURRENT_VERSION = "3.5.8";
+    static final String CURRENT_VERSION = "3.5.9";
     static final String RELEASES_URL = "https://api.github.com/repos/renatozapelini/Al-Code-Assistant-Free/releases";
     static final int TIMEOUT_MS = 8000, BODY_LIMIT = 1024 * 1024;
     static final long APK_LIMIT = 100L * 1024 * 1024, SUCCESS_TTL = 3600000, FAILURE_TTL = 300000;

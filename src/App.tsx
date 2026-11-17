@@ -39,6 +39,20 @@ export default function App() {
   const apiFetch = useCallback(appFetch, []);
   const nativeAndroid = Boolean(androidBridge());
   const desktop = isDesktopApp();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('code-assistants-sidebar-collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('code-assistants-sidebar-collapsed', sidebarCollapsed ? '1' : '0');
+    } catch {
+      // ignorar
+    }
+  }, [sidebarCollapsed]);
   const code = useCodeProjects(apiFetch);
   const { importProjects } = code;
 
@@ -211,7 +225,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#090B0E] text-zinc-100 flex flex-col lg:flex-row">
-      <DesktopSidebar activeTab={activeTab} onSelectTab={navigate} online={isOnline} desktop={isDesktopApp()} />
+      <DesktopSidebar activeTab={activeTab} onSelectTab={navigate} online={isOnline} desktop={desktop} collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)} />
       <div className="min-w-0 flex-1 flex flex-col">
       <div className="lg:hidden">
       <TopBar
