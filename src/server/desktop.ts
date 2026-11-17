@@ -254,6 +254,10 @@ export function createDesktopRouter(): express.Router {
   }
 
   router.get('/api/app/desktop/local-providers', (_req, res) => {
+    if (!state.localProvidersLinuxEnabled) {
+      res.json({ ok: true, providers: [] });
+      return;
+    }
     const ensured = ensureLocalProviders();
     const locals = state.providers.filter(
       (p: ExternalProviderAccount) => p.provider === 'ollama' || p.provider === 'lmstudio'
@@ -275,6 +279,32 @@ export function createDesktopRouter(): express.Router {
     saveState();
     appendLog('info', `provedor local ${provider.provider} ${provider.enabled ? 'ativado' : 'desativado'}`);
     res.json({ ok: true, id, enabled: provider.enabled });
+  });
+
+  // ----- Toggle global de modelos locais Linux -----
+  router.get('/api/app/desktop/local-providers-enabled', (_req, res) => {
+    res.json({ ok: true, enabled: state.localProvidersLinuxEnabled });
+  });
+
+  router.post('/api/app/desktop/local-providers-enabled/toggle', (_req, res) => {
+    state.localProvidersLinuxEnabled = !state.localProvidersLinuxEnabled;
+    saveState();
+
+    // Quando desativado, desliga todos os provedores locais. Quando ativado,
+    // garante que eles existam no estado.
+    if (!state.localProvidersLinuxEnabled) {
+      for (const p of state.providers) {
+        if (p.provider === 'ollama' || p.provider === 'lmstudio') {
+          p.enabled = false;
+        }
+      }
+    } else {
+      ensureLocalProviders();
+    }
+    saveState();
+
+    appendLog('info', `modelos locais Linux ${state.localProvidersLinuxEnabled ? 'ativados' : 'desativados'}`);
+    res.json({ ok: true, enabled: state.localProvidersLinuxEnabled });
   });
 
   return router;

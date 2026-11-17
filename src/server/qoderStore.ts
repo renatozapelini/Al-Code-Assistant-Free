@@ -96,6 +96,7 @@ interface PersistedState {
   logs: RequestLogEntry[];
   risk: RiskTelemetry;
   totalRequests: number;
+  localProvidersLinuxEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: GatewaySettings = {
@@ -144,6 +145,7 @@ function loadState(): PersistedState {
           lastSignalDetail: parsed.risk?.lastSignalDetail,
         },
         totalRequests: parsed.totalRequests ?? 0,
+        localProvidersLinuxEnabled: parsed.localProvidersLinuxEnabled ?? true,
       };
     } catch {
       // fall through to default state
@@ -172,6 +174,7 @@ function loadState(): PersistedState {
       versionGateCount: 0,
     },
     totalRequests: 0,
+    localProvidersLinuxEnabled: true,
   };
 }
 
