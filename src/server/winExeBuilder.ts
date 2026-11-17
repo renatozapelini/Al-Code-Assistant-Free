@@ -186,6 +186,7 @@ function page(res, asset) {
     '(function(){' +
     'try{if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){for(var i=0;i<rs.length;i++)rs[i].unregister();}});}catch(e){}' +
     'window.CodeAssistantsDesktop={version:' + JSON.stringify(DESKTOP_VERSION) + ',platform:"windows"};' +
+    'try{var saved=sessionStorage.getItem("code-assistants-version");if(saved&&saved!="' + DESKTOP_VERSION + '"){caches.keys().then(function(keys){for(var i=0;i<keys.length;i++)caches.delete(keys[i]);});sessionStorage.removeItem("code-assistants-version");location.reload();}}catch(e){}sessionStorage.setItem("code-assistants-version","' + DESKTOP_VERSION + '");}catch(e){}' +
     '})();</script>';
   // Coloca no início do head para rodar antes de qualquer outro script.
   if (html.includes('<head>')) {
