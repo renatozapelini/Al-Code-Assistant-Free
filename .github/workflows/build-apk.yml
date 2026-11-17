@@ -12,8 +12,13 @@ permissions:
   contents: write
 
 jobs:
+  # Dois agentes Linux independentes para build do APK (redundância).
   apk:
     runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 2
+      matrix:
+        agent: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -35,8 +40,6 @@ jobs:
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$SDK" -name sdkmanager -type f | head -1)"; fi
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0"
-          # O motor nativo usa o aapt clássico (build-tools 34). Se por algum motivo
-          # ele não vier no pacote, pega de uma build-tools antiga que sempre o traz.
           if [ ! -f "$SDK/build-tools/34.0.0/aapt" ]; then
             "$SDKMANAGER" "build-tools;30.0.3"
             cp "$SDK/build-tools/30.0.3/aapt" "$SDK/build-tools/34.0.0/aapt"
@@ -59,29 +62,28 @@ jobs:
       - name: Tests
         run: bun test || bun test
 
-      - name: Build APK
+      - name: Build APK (agente ${{ matrix.agent }})
         run: bun scripts/build-apk.ts
 
-      - name: Source ZIP
-        run: git archive --format=zip -o "build/Code-Assistants-v${{ inputs.version }}-source.zip" HEAD
-
-      - name: Check assets
+      - name: Check APK asset (agente ${{ matrix.agent }})
         run: |
           test -f "build/Code-Assistants-v${{ inputs.version }}.apk"
-          test -f "build/Code-Assistants-v${{ inputs.version }}-source.zip"
-          ls -l build
+          ls -l build/Code-Assistants-v${{ inputs.version }}.apk
 
-      - name: Upload APK assets
+      - name: Upload APK asset (agente ${{ matrix.agent }})
         uses: actions/upload-artifact@v4
         with:
-          name: android-assets
+          name: android-assets-${{ matrix.agent }}
           if-no-files-found: error
-          path: |
-            build/Code-Assistants-v${{ inputs.version }}.apk
-            build/Code-Assistants-v${{ inputs.version }}-source.zip
+          path: build/Code-Assistants-v${{ inputs.version }}.apk
 
+  # Dois agentes Linux independentes para build do EXE (redundância).
   exe:
     runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 2
+      matrix:
+        agent: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -93,21 +95,22 @@ jobs:
         run: bun install --frozen-lockfile
 
       # Compila a interface sem service worker e empacota tudo em um .exe (bun compile).
-      - name: Build Windows EXE
+      - name: Build Windows EXE (agente ${{ matrix.agent }})
         run: bun scripts/build-exe.ts
 
-      - name: Check asset
+      - name: Check EXE asset (agente ${{ matrix.agent }})
         run: |
           test -f "build/Code-Assistants-v${{ inputs.version }}.exe"
-          ls -l build
+          ls -l build/Code-Assistants-v${{ inputs.version }}.exe
 
-      - name: Upload EXE asset
+      - name: Upload EXE asset (agente ${{ matrix.agent }})
         uses: actions/upload-artifact@v4
         with:
-          name: windows-assets
+          name: windows-assets-${{ matrix.agent }}
           if-no-files-found: error
           path: build/Code-Assistants-v${{ inputs.version }}.exe
 
+  # Instalador do Windows: compila sobre o EXE do agente 1.
   installer:
     runs-on: ubuntu-latest
     needs: [exe]
@@ -121,10 +124,10 @@ jobs:
       - name: Instalar NSIS
         run: sudo apt-get update -y && sudo apt-get install -y nsis
 
-      - name: Baixar EXE
+      - name: Baixar EXE (agente 1)
         uses: actions/download-artifact@v4
         with:
-          name: windows-assets
+          name: windows-assets-1
           path: build
 
       - name: Compilar instalador do Windows
@@ -153,12 +156,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download built assets
+      - name: Download APK do agente 1
         uses: actions/download-artifact@v4
         with:
-          pattern: '*-assets'
+          name: android-assets-1
           path: build
-          merge-multiple: true
+
+      - name: Download EXE do agente 1
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-assets-1
+          path: build
+
+      - name: Download instalador
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer-assets
+          path: build
+
+      - name: Source ZIP
+        run: git archive --format=zip -o "build/Code-Assistants-v${{ inputs.version }}-source.zip" HEAD
 
       - name: Check release files
         run: |
