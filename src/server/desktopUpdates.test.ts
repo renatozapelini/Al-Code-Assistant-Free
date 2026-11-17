@@ -166,7 +166,7 @@ describe('atualizador do aplicativo Windows', () => {
   });
 
   test('rota recusa parâmetros desconhecidos e devolve o contrato', async () => {
-    const service = new DesktopUpdateService(async () => ({ ok: true, status: 200, text: async () => JSON.stringify([release('3.5.4')]) }));
+    const service = new DesktopUpdateService(async () => ({ ok: true, status: 200, text: async () => JSON.stringify([release('3.5.5')]) }));
     const { createDesktopUpdateRouter } = await import('./desktopUpdates.ts');
     const app = express();
     app.use(express.json());
@@ -180,14 +180,14 @@ describe('atualizador do aplicativo Windows', () => {
       expect(ok.status).toBe(200);
       const body = await ok.json() as { available: boolean; latestVersion: string };
       expect(body.available).toBe(true);
-      expect(body.latestVersion).toBe('3.5.4');
+      expect(body.latestVersion).toBe('3.5.5');
 
       const bad = await fetch(`${base}/api/app/updates?force=0&x=1`);
       expect(bad.status).toBe(400);
 
       const install = await fetch(`${base}/api/app/updates/install`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version: '3.5.3' }),
+        body: JSON.stringify({ version: '3.5.4' }),
       });
       expect(install.status).toBe(409);
       expect((await install.json() as { error: string }).error).toBe('not_desktop');

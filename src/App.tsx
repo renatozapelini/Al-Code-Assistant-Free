@@ -102,7 +102,8 @@ export default function App() {
       const message = err instanceof Error ? err.message : 'Erro ao conectar com o serviço local.';
       let extra = '';
       if (desktop && /\(HTTP 404\)/.test(message)) {
-        extra = ' Pressione Ctrl+Shift+R para recarregar o cache e tente novamente.';
+        extra =
+          ' Pressione Ctrl+Shift+R para recarregar o cache. Se continuar, desinstale o Code Assistants e instale novamente o instalador mais recente.';
       }
       setFetchError(desktop ? `${message}${extra} Veja o diagnóstico em /diagnostico ou o log em “Este computador”.` : message);
     }

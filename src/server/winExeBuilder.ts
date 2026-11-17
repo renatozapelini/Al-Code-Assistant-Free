@@ -178,12 +178,19 @@ function page(res, asset) {
   // Injeta a identificação do Windows diretamente no HTML, sem depender de
   // requisição externa para /desktop-bootstrap.js (que um service worker
   // antigo poderia interceptar e retornar 404).
-  const bootstrap = '<script>' +
+  const bootstrap =
+    '<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">' +
+    '<meta http-equiv="Pragma" content="no-cache">' +
+    '<meta http-equiv="Expires" content="0">' +
+    '<script>' +
     '(function(){' +
     'try{if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){for(var i=0;i<rs.length;i++)rs[i].unregister();}});}catch(e){}' +
     'window.CodeAssistantsDesktop={version:' + JSON.stringify(DESKTOP_VERSION) + ',platform:"windows"};' +
     '})();</script>';
-  if (html.includes('</head>')) {
+  // Coloca no início do head para rodar antes de qualquer outro script.
+  if (html.includes('<head>')) {
+    html = html.replace('<head>', '<head>' + bootstrap);
+  } else if (html.includes('</head>')) {
     html = html.replace('</head>', bootstrap + '</head>');
   } else if (html.includes('<body')) {
     html = html.replace('<body', bootstrap + '<body');
@@ -191,7 +198,8 @@ function page(res, asset) {
     html = bootstrap + html;
   }
   res.setHeader('Content-Type', asset.mime);
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Service-Worker-Allowed', '/');
   res.send(html);
 }
 
