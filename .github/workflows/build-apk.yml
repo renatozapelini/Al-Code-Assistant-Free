@@ -129,8 +129,9 @@ jobs:
 
       - name: Compilar instalador do Windows
         run: |
+          cp "build/Code-Assistants-v${{ inputs.version }}.exe" "installer/"
           makensis -DAPP_VERSION="${{ inputs.version }}" \
-            -DAPP_EXE="build/Code-Assistants-v${{ inputs.version }}.exe" \
+            -DAPP_EXE="installer/Code-Assistants-v${{ inputs.version }}.exe" \
             -DOUTFILE="build/Code-Assistants-v${{ inputs.version }}-setup.exe" \
             installer/installer.nsi
           test -f "build/Code-Assistants-v${{ inputs.version }}-setup.exe"
