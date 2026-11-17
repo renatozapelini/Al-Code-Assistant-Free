@@ -131,7 +131,7 @@ jobs:
         run: |
           cp "build/Code-Assistants-v${{ inputs.version }}.exe" "Code-Assistants-v${{ inputs.version }}.exe"
           makensis -DAPP_VERSION="${{ inputs.version }}" \
-            -DAPP_EXE="Code-Assistants-v${{ inputs.version }}.exe" \
+            -DAPP_EXE="../Code-Assistants-v${{ inputs.version }}.exe" \
             -DOUTFILE="build/Code-Assistants-v${{ inputs.version }}-setup.exe" \
             installer/installer.nsi
           rm -f "Code-Assistants-v${{ inputs.version }}.exe"
