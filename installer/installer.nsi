@@ -54,11 +54,19 @@ BrandingText "${APP_NAME} ${APP_VERSION}"
 !insertmacro MUI_LANGUAGE "PortugueseBR"
 
 ; ------------------------------------------------------------
-; Função: fecha o Code Assistants se estiver rodando
+; Função: fecha o Code Assistants se estiver rodando (instalação)
 ; ------------------------------------------------------------
 Function CloseRunningInstance
   Push $R0
-  ; mata qualquer processo do Code-Assistants.exe que esteja rodando
+  ExecWait 'taskkill /F /IM "${APP_EXE_NAME}" /T' $R0
+  Pop $R0
+FunctionEnd
+
+; ------------------------------------------------------------
+; Função: fecha o Code Assistants se estiver rodando (desinstalação)
+; ------------------------------------------------------------
+Function un.CloseRunningInstance
+  Push $R0
   ExecWait 'taskkill /F /IM "${APP_EXE_NAME}" /T' $R0
   Pop $R0
 FunctionEnd
@@ -119,7 +127,7 @@ Section "Uninstall"
   SetShellVarContext current
 
   ; Fecha instâncias rodando antes de remover
-  Call CloseRunningInstance
+  Call un.CloseRunningInstance
 
   Delete "$DESKTOP\Code Assistants.lnk"
   Delete "$SMPROGRAMS\Code Assistants\Code Assistants.lnk"
