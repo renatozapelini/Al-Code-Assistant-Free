@@ -141,7 +141,7 @@ jobs:
       - name: Upload instalador
         uses: actions/upload-artifact@v4
         with:
-          name: windows-assets
+          name: windows-installer-assets
           if-no-files-found: error
           path: build/Code-Assistants-v${{ inputs.version }}-setup.exe
 
