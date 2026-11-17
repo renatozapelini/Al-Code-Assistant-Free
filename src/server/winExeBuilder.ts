@@ -175,8 +175,14 @@ app.get('/diagnostico', (_req, res) => {
 
 function page(res, asset) {
   let html = Buffer.from(asset.b64, 'base64').toString('utf8');
-  const bootstrap = '<script src="/desktop-bootstrap.js"></script>';
-  // Inje o bootstrap de forma robusta: head, body ou início do arquivo.
+  // Injeta a identificação do Windows diretamente no HTML, sem depender de
+  // requisição externa para /desktop-bootstrap.js (que um service worker
+  // antigo poderia interceptar e retornar 404).
+  const bootstrap = '<script>' +
+    '(function(){' +
+    'try{if("serviceWorker"in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){for(var i=0;i<rs.length;i++)rs[i].unregister();}});}catch(e){}' +
+    'window.CodeAssistantsDesktop={version:' + JSON.stringify(DESKTOP_VERSION) + ',platform:"windows"};' +
+    '})();</script>';
   if (html.includes('</head>')) {
     html = html.replace('</head>', bootstrap + '</head>');
   } else if (html.includes('<body')) {
