@@ -108,10 +108,45 @@ jobs:
           if-no-files-found: error
           path: build/Code-Assistants-v${{ inputs.version }}.exe
 
+  installer:
+    runs-on: ubuntu-latest
+    needs: [exe]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Instalar NSIS
+        run: sudo apt-get update -y && sudo apt-get install -y nsis
+
+      - name: Baixar EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-assets
+          path: build
+
+      - name: Compilar instalador do Windows
+        run: |
+          makensis -DAPP_VERSION="${{ inputs.version }}" \
+            -DAPP_EXE="build/Code-Assistants-v${{ inputs.version }}.exe" \
+            -DOUTFILE="build/Code-Assistants-v${{ inputs.version }}-setup.exe" \
+            installer/installer.nsi
+          test -f "build/Code-Assistants-v${{ inputs.version }}-setup.exe"
+          ls -l build
+
+      - name: Upload instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-assets
+          if-no-files-found: error
+          path: build/Code-Assistants-v${{ inputs.version }}-setup.exe
+
   # GitHub não aceita adicionar arquivos a um release já publicado (releases
   # imutáveis), então os três arquivos sobem juntos, de uma só vez.
   release:
-    needs: [apk, exe]
+    needs: [apk, exe, installer]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,6 +162,7 @@ jobs:
         run: |
           test -f "build/Code-Assistants-v${{ inputs.version }}.apk"
           test -f "build/Code-Assistants-v${{ inputs.version }}.exe"
+          test -f "build/Code-Assistants-v${{ inputs.version }}-setup.exe"
           test -f "build/Code-Assistants-v${{ inputs.version }}-source.zip"
           test -f "release-notes/v${{ inputs.version }}.md"
           ls -l build
@@ -141,4 +177,5 @@ jobs:
           files: |
             build/Code-Assistants-v${{ inputs.version }}.apk
             build/Code-Assistants-v${{ inputs.version }}.exe
+            build/Code-Assistants-v${{ inputs.version }}-setup.exe
             build/Code-Assistants-v${{ inputs.version }}-source.zip

@@ -1,6 +1,6 @@
 export type RealmId = 'intl' | 'cn';
 
-export type NavTab = 'options' | 'projects' | 'hub' | 'chat' | 'scripts' | 'accounts' | 'apis' | 'analytics' | 'models' | 'android';
+export type NavTab = 'options' | 'projects' | 'hub' | 'chat' | 'scripts' | 'accounts' | 'apis' | 'analytics' | 'models' | 'android' | 'desktop';
 
 export type ProviderPresetId =
   | 'openai'

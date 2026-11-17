@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AiApisPanel } from './components/AiApisPanel';
 import { Analytics } from './components/Analytics';
 import { BottomNav } from './components/BottomNav';
@@ -15,6 +15,7 @@ import { QoderAccessPanel } from './components/QoderAccessPanel';
 import { androidBridge, appFetch } from './utils/androidBridge';
 import { AppUpdatePanel } from './components/AppUpdatePanel';
 import { DesktopSidebar } from './components/DesktopSidebar';
+import { DesktopPanel } from './components/DesktopPanel';
 import { isDesktopApp } from './utils/platform';
 import type { CodeProject } from './utils/codeAssistant';
 import type { HubOverview, NavTab, QoderModel } from './types/hub';
@@ -37,7 +38,13 @@ export default function App() {
 
   const apiFetch = useCallback(appFetch, []);
   const nativeAndroid = Boolean(androidBridge());
+  const desktop = isDesktopApp();
   const code = useCodeProjects(apiFetch);
+  const { importProjects } = code;
+  // Projetos já gravados por versão (updatedAt) para não reescrever o disco a
+  // cada atualização de tela; a pasta é uma cópia fiel do checkpoint local.
+  const writtenVersions = useRef(new Map<string, number>());
+  const knownProjectIds = useRef(new Set<string>());
 
   const loadAppData = useCallback(async () => {
     setFetchError(null);
@@ -46,7 +53,16 @@ export default function App() {
         apiFetch('/api/app/overview'),
         apiFetch('/api/app/catalog'),
       ]);
-      if (!ovRes.ok) throw new Error(`Falha ao carregar serviço das assistentes (${ovRes.status})`);
+      if (!ovRes.ok) {
+        let detail = '';
+        try {
+          const payload = (await ovRes.json()) as { error?: { message?: string } };
+          detail = payload?.error?.message || '';
+        } catch {
+          // resposta sem JSON: mantém só o status
+        }
+        throw new Error(`Não foi possível carregar o serviço local (HTTP ${ovRes.status})${detail ? `: ${detail}` : '.'}`);
+      }
       const ovData = (await ovRes.json()) as HubOverview;
       setOverview(ovData);
 
@@ -55,13 +71,92 @@ export default function App() {
         if (Array.isArray(catData.models)) setModels(catData.models);
       }
     } catch (err) {
-      setFetchError(err instanceof Error ? err.message : 'Erro ao conectar com o serviço das assistentes.');
+      const message = err instanceof Error ? err.message : 'Erro ao conectar com o serviço local.';
+      setFetchError(desktop ? `${message} Veja o diagnóstico em /diagnostico ou o log em “Este computador”.` : message);
     }
-  }, [apiFetch]);
+  }, [apiFetch, desktop]);
 
   useEffect(() => {
     void loadAppData();
   }, [loadAppData]);
+
+  const saveDesktopProject = useCallback(async (project: CodeProject) => {
+    const res = await apiFetch('/api/app/desktop/projects', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project }),
+    });
+    if (!res.ok) throw new Error(`Não foi possível gravar “${project.name}” na pasta do computador (HTTP ${res.status}).`);
+  }, [apiFetch]);
+
+  const fetchProjectsFromDisk = useCallback(async (): Promise<unknown[]> => {
+    const listRes = await apiFetch('/api/app/desktop/projects');
+    if (!listRes.ok) return [];
+    const data = (await listRes.json()) as { projects?: { id?: string }[] };
+    const summaries = Array.isArray(data.projects) ? data.projects.slice(0, 10) : [];
+    const incoming: unknown[] = [];
+    for (const item of summaries) {
+      if (!item || typeof item.id !== 'string') continue;
+      const one = await apiFetch(`/api/app/desktop/projects/${encodeURIComponent(item.id)}`);
+      if (!one.ok) continue;
+      const payload = (await one.json()) as { project?: unknown };
+      if (payload.project) incoming.push(payload.project);
+    }
+    return incoming;
+  }, [apiFetch]);
+
+  const restoreFromDisk = useCallback(async () => importProjects(await fetchProjectsFromDisk()), [importProjects, fetchProjectsFromDisk]);
+
+  const saveAllToDisk = useCallback(async () => {
+    let count = 0;
+    for (const project of code.projects) {
+      await saveDesktopProject(project);
+      writtenVersions.current.set(project.id, project.updatedAt);
+      count++;
+    }
+    return count;
+  }, [code.projects, saveDesktopProject]);
+
+  // Ao abrir no computador, junta o que já está na pasta (sem apagar nada).
+  useEffect(() => {
+    if (!desktop) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const incoming = await fetchProjectsFromDisk();
+        if (!cancelled && incoming.length) importProjects(incoming);
+      } catch {
+        // a pasta é opcional: a interface segue com os checkpoints locais
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [desktop, fetchProjectsFromDisk, importProjects]);
+
+  // Espelha cada checkpoint na pasta de projetos, sem repetir versões iguais.
+  useEffect(() => {
+    if (!desktop || code.projects.length === 0) return;
+    const timer = setTimeout(() => {
+      for (const project of code.projects) {
+        if (writtenVersions.current.get(project.id) === project.updatedAt) continue;
+        writtenVersions.current.set(project.id, project.updatedAt);
+        void saveDesktopProject(project).catch(() => writtenVersions.current.delete(project.id));
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [desktop, code.projects, saveDesktopProject]);
+
+  // Projeto apagado no aplicativo também sai da pasta do computador.
+  useEffect(() => {
+    if (!desktop) return;
+    const current = new Set(code.projects.map((project) => project.id));
+    for (const id of [...knownProjectIds.current]) {
+      if (current.has(id)) continue;
+      knownProjectIds.current.delete(id);
+      writtenVersions.current.delete(id);
+      void apiFetch(`/api/app/desktop/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => undefined);
+    }
+    for (const id of current) knownProjectIds.current.add(id);
+  }, [desktop, code.projects, apiFetch]);
 
   const handleTestAllProviders = useCallback(async () => {
     const active = overview?.providers.filter((p) => p.enabled) ?? [];
@@ -101,15 +196,22 @@ export default function App() {
 
       {fetchError && (
         <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4">
-          <div className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/60 text-xs text-red-200 flex items-center justify-between gap-3">
+          <div className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/60 text-xs text-red-200 flex flex-wrap items-center justify-between gap-3">
             <span>{fetchError}</span>
-            <button
-              type="button"
-              onClick={() => void loadAppData()}
-              className="px-3 py-1.5 rounded-lg bg-red-900/50 hover:bg-red-800/60 text-xs font-medium whitespace-nowrap"
-            >
-              Tentar novamente
-            </button>
+            <span className="flex items-center gap-2">
+              {desktop && (
+                <a href="/diagnostico" className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-xs font-medium whitespace-nowrap">
+                  Diagnóstico
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => void loadAppData()}
+                className="px-3 py-1.5 rounded-lg bg-red-900/50 hover:bg-red-800/60 text-xs font-medium whitespace-nowrap"
+              >
+                Tentar novamente
+              </button>
+            </span>
           </div>
         </div>
       )}
@@ -119,9 +221,17 @@ export default function App() {
         {activeTab === 'options' && <section className="rounded-xl border border-zinc-800 bg-[#12151B] p-4 space-y-3">
           <h1 className="text-lg font-semibold">Opções</h1>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {([{ id: 'scripts', label: 'Pré-prompt · detalhar uma ideia' }, { id: 'models', label: 'Modelos de IA' }, { id: 'analytics', label: 'Uso e falhas das APIs' }, { id: 'accounts', label: 'Qoder · login assistido e múltiplas contas' }] as const).map(item => <button key={item.id} type="button" onClick={() => navigate(item.id)} className="min-h-[48px] text-left text-sm px-3 rounded-lg border border-zinc-800">{item.label}</button>)}
+            {([
+              { id: 'scripts', label: 'Pré-prompt · detalhar uma ideia' },
+              { id: 'models', label: 'Modelos de IA' },
+              { id: 'analytics', label: 'Uso e falhas das APIs' },
+              { id: 'accounts', label: 'Qoder · login assistido e múltiplas contas' },
+              ...(desktop ? [{ id: 'desktop', label: 'Este computador · pastas e GitHub' }] : []),
+            ] as const).map(item => <button key={item.id} type="button" onClick={() => navigate(item.id as NavTab)} className="min-h-[48px] text-left text-sm px-3 rounded-lg border border-zinc-800">{item.label}</button>)}
           </div>
-          <p className="text-xs text-zinc-500">Projetos ficam neste dispositivo. A sincronização de arquivos com GitHub não está ativada; você pode exportar o ZIP pela área Arquivos do projeto. Nenhuma chave ou projeto é publicado automaticamente.</p>
+          <p className="text-xs text-zinc-500">Projetos ficam neste dispositivo. {desktop
+            ? 'No aplicativo Windows, os arquivos são gravados em uma pasta normal do computador e podem ser enviados ao seu GitHub em “Este computador”.'
+            : 'Você pode exportar o ZIP pela área Arquivos do projeto.'} Nenhuma chave ou projeto é publicado automaticamente.</p>
         </section>}
         <div hidden={activeTab !== 'projects'}>
           <CodeAssistantsPanel projects={code.projects} activeId={code.activeId} busyId={code.busyId}
@@ -213,6 +323,15 @@ export default function App() {
         )}
 
         {activeTab === 'accounts' && <QoderAccessPanel />}
+
+        {activeTab === 'desktop' && (
+          <DesktopPanel
+            apiFetch={apiFetch}
+            projects={code.projects.map((project) => ({ id: project.id, name: project.name, files: Object.keys(project.files).length }))}
+            onSaveAll={saveAllToDisk}
+            onRestoreFromDisk={restoreFromDisk}
+          />
+        )}
       </main>
 
       {buildProject && <ProjectBuildReview key={`${buildProject.id}-${buildProject.revision}`} project={buildProject}

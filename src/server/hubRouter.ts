@@ -4,6 +4,8 @@ import { PROVIDER_PRESETS } from './providerPresets.ts';
 import { getExternalCatalog } from './externalCatalog.ts';
 import { createProjectBuildRouter } from './projectBuild.ts';
 import { createDesktopUpdateRouter } from './desktopUpdates.ts';
+import { createDesktopRouter } from './desktop.ts';
+import { appendLog, logError } from './appLog.ts';
 import { handleChatCompletions } from './multiAiProxy.ts';
 import {
   addDiscoveredProvider,
@@ -24,6 +26,18 @@ import {
 export function createAssistantRouter(): express.Router {
   const router = express.Router();
 
+  // Falhas de API ficam registradas: quando a janela mostra um erro, o arquivo
+  // de log diz qual chamada falhou e com qual status.
+  router.use((req, res, next) => {
+    const started = Date.now();
+    res.on('finish', () => {
+      if (res.statusCode >= 400) {
+        appendLog('warn', `${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - started}ms)`);
+      }
+    });
+    next();
+  });
+
   // A random web page must not be able to alter the local key store.
   router.use('/api/app', (req, res, next) => {
     const origin = req.header('origin');
@@ -35,6 +49,7 @@ export function createAssistantRouter(): express.Router {
   });
 
   router.use('/api/app/project-build', createProjectBuildRouter());
+  router.use(createDesktopRouter());
   // Atualizador do aplicativo Windows: consulta os releases públicos e troca o
   // .exe em uso. No APK quem responde esse caminho é o motor Java.
   router.use(createDesktopUpdateRouter());
@@ -263,6 +278,7 @@ export function createAssistantRouter(): express.Router {
 
   router.use((err: Error, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (res.headersSent) { next(err); return; }
+    logError('rota da interface', err);
     res.status(400).json({ error: { type: 'invalid_request_error', message: err.message } });
   });
   return router;

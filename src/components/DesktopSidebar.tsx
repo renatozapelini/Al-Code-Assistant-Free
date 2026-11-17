@@ -1,5 +1,5 @@
 import React from 'react';
-import { Code2, FolderCode, MessageSquare, KeyRound, Settings2, Sparkles, Boxes, BarChart3, UserRound, Circle } from 'lucide-react';
+import { Code2, FolderCode, MessageSquare, KeyRound, Settings2, Sparkles, Boxes, BarChart3, UserRound, Circle, Monitor } from 'lucide-react';
 import type { NavTab } from '../types/hub';
 import { APP_VERSION } from '../version';
 
@@ -21,6 +21,7 @@ const TOOLS: { id: NavTab; label: string; icon: React.ComponentType<{ className?
   { id: 'models', label: 'Modelos', icon: Boxes },
   { id: 'analytics', label: 'Uso e falhas', icon: BarChart3 },
   { id: 'accounts', label: 'Contas Qoder', icon: UserRound },
+  { id: 'desktop', label: 'Este computador', icon: Monitor },
 ];
 
 const itemClass = (active: boolean) =>
@@ -49,7 +50,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ activeTab, onSel
 
     <p className="mt-5 mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Ferramentas</p>
     <nav aria-label="Ferramentas" className="space-y-1">
-      {TOOLS.map((item) => {
+      {TOOLS.filter((item) => item.id !== 'desktop' || desktop).map((item) => {
         const Icon = item.icon;
         return <button key={item.id} type="button" onClick={() => onSelectTab(item.id)} aria-current={activeTab === item.id ? 'page' : undefined} className={itemClass(activeTab === item.id)}>
           <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />{item.label}

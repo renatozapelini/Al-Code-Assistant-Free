@@ -98,13 +98,13 @@ describe('atualizador do aplicativo Windows', () => {
   test('consulta com cache: sucesso por 1h, falha por 5min, force sempre busca', async () => {
     let calls = 0;
     let now = 1000;
-    let payload: unknown = [release('3.4.9')];
+    let payload: unknown = [release('3.5.1')];
     let status = 200;
     const service = new DesktopUpdateService(async () => {
       calls++;
       return { ok: status === 200, status, text: async () => JSON.stringify(payload) };
     }, () => now);
-    expect((await service.check()).latestVersion).toBe('3.4.9');
+    expect((await service.check()).latestVersion).toBe('3.5.1');
     expect(calls).toBe(1);
     await service.check();
     expect(calls).toBe(1);
@@ -147,17 +147,17 @@ describe('atualizador do aplicativo Windows', () => {
   test('guarda o sha256 publicado para o release mais novo', async () => {
     const service = new DesktopUpdateService(async () => ({
       ok: true, status: 200,
-      text: async () => JSON.stringify([release('3.4.9'), { ...release('3.4.9'), assets: [EXE, APK] }]),
+      text: async () => JSON.stringify([release('3.5.1'), { ...release('3.5.1'), assets: [EXE, APK] }]),
     }));
     await service.check();
-    expect(service.digestFor('3.4.9')).toBe(`sha256:${'a'.repeat(64)}`);
+    expect(service.digestFor('3.5.1')).toBe(`sha256:${'a'.repeat(64)}`);
     expect(service.digestFor('3.4.8')).toBe('');
     expect(service.digestFor(undefined)).toBe('');
   });
 
   test('instalação automática só existe no .exe do Windows', async () => {
-    const service = new DesktopUpdateService(async () => ({ ok: true, status: 200, text: async () => JSON.stringify([release('3.4.9')]) }));
-    const result = await installDesktopUpdate(service, '3.4.9');
+    const service = new DesktopUpdateService(async () => ({ ok: true, status: 200, text: async () => JSON.stringify([release('3.5.1')]) }));
+    const result = await installDesktopUpdate(service, '3.5.1');
     expect(result.ok).toBe(false);
     expect(result.error).toBe('not_desktop');
     const invalid = await installDesktopUpdate(service, 'não-é-versão');
@@ -166,7 +166,7 @@ describe('atualizador do aplicativo Windows', () => {
   });
 
   test('rota recusa parâmetros desconhecidos e devolve o contrato', async () => {
-    const service = new DesktopUpdateService(async () => ({ ok: true, status: 200, text: async () => JSON.stringify([release('3.4.9')]) }));
+    const service = new DesktopUpdateService(async () => ({ ok: true, status: 200, text: async () => JSON.stringify([release('3.5.1')]) }));
     const { createDesktopUpdateRouter } = await import('./desktopUpdates.ts');
     const app = express();
     app.use(express.json());
@@ -180,14 +180,14 @@ describe('atualizador do aplicativo Windows', () => {
       expect(ok.status).toBe(200);
       const body = await ok.json() as { available: boolean; latestVersion: string };
       expect(body.available).toBe(true);
-      expect(body.latestVersion).toBe('3.4.9');
+      expect(body.latestVersion).toBe('3.5.1');
 
       const bad = await fetch(`${base}/api/app/updates?force=0&x=1`);
       expect(bad.status).toBe(400);
 
       const install = await fetch(`${base}/api/app/updates/install`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version: '3.4.9' }),
+        body: JSON.stringify({ version: '3.5.1' }),
       });
       expect(install.status).toBe(409);
       expect((await install.json() as { error: string }).error).toBe('not_desktop');

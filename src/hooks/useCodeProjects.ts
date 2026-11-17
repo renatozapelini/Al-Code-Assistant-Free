@@ -157,5 +157,25 @@ export function useCodeProjects(apiFetch: (path: string, init?: RequestInit) => 
         message: `${result.script || 'build'} da revisão ${revision}: ${result.ok ? 'processo terminou com sucesso' : 'falhou'}. ${result.stderr?.slice(-1200) || result.stdout?.slice(-1200) || ''}` }].slice(-150) });
     } catch (e) { handleError(e); }
   }, [saveProject, handleError]);
-  return { projects, activeId, busyId, error, create, setExecutionBlocked, select: setActiveId, run, pause, saveFile, saveFiles, exportProject, requestChange, configureProviders, renameProject, deleteProject, recordBuild };
+  // Restaura checkpoints que estão na pasta do computador. O projeto mais novo
+  // (updatedAt maior) vence; nada é apagado do aplicativo nem do disco.
+  const importProjects = useCallback((incoming: unknown[]) => {
+    try {
+      if (!Array.isArray(incoming) || incoming.length === 0) return 0;
+      const restored = restoreCodeProjects(JSON.stringify(incoming.slice(0, 10)));
+      const byId = new Map(list.current.map((project) => [project.id, project]));
+      let changed = 0;
+      for (const project of restored) {
+        const current = byId.get(project.id);
+        if (!current || current.updatedAt < project.updatedAt) { byId.set(project.id, project); changed++; }
+      }
+      if (!changed) return 0;
+      const next = [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10);
+      saveList(next);
+      setActiveId((current) => current ?? next[0]?.id ?? null);
+      setError(null);
+      return changed;
+    } catch (e) { handleError(e); return 0; }
+  }, [saveList, handleError]);
+  return { projects, activeId, busyId, error, create, setExecutionBlocked, select: setActiveId, run, pause, saveFile, saveFiles, exportProject, requestChange, configureProviders, renameProject, deleteProject, recordBuild, importProjects };
 }
