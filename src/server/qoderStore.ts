@@ -177,8 +177,9 @@ function loadState(): PersistedState {
 
 let state: PersistedState = loadState();
 
-function saveState(): void {
-  ensureDataDir();
+export { state };
+
+export function saveState(): void {
   const tmp = `${STATE_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8');
   fs.renameSync(tmp, STATE_FILE);

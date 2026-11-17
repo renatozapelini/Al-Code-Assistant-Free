@@ -22,6 +22,8 @@ import {
   storeToken,
   validateToken,
 } from './githubPush.ts';
+import { addProviderAccount, sanitizeProvider, state, saveState } from './qoderStore.ts';
+import type { ProviderPresetId, ExternalProviderAccount, SafeProviderSummary } from '../types/hub.ts';
 
 // Rotas exclusivas do aplicativo do computador: pasta de projetos local,
 // diagnóstico e login no GitHub para enviar um projeto. Nada aqui existe no APK.
@@ -221,6 +223,58 @@ export function createDesktopRouter(): express.Router {
       appendLog('warn', `envio ao GitHub recusado: ${friendlyGithubError(err)}`);
       fail(res, err);
     }
+  });
+
+  // ----- Modelos locais pré-instalados (Ollama / LM Studio) -----
+  // Garante que os provedores locais existam no estado. São adicionados apenas
+  // se ainda não houver um provedor com o mesmo provider+baseUrl.
+  function ensureLocalProviders(): SafeProviderSummary[] {
+    const locals: { provider: ProviderPresetId; name: string; baseUrl: string; defaultModel: string }[] = [
+      { provider: 'ollama', name: 'Ollama (Local)', baseUrl: 'http://127.0.0.1:11434/v1', defaultModel: 'qwen2.5-coder:7b' },
+      { provider: 'lmstudio', name: 'LM Studio (Local)', baseUrl: 'http://127.0.0.1:1234/v1', defaultModel: 'qwen2.5-coder-14b-instruct' },
+    ];
+    const result: SafeProviderSummary[] = [];
+    for (const item of locals) {
+      const already = state.providers.find(
+        (p: ExternalProviderAccount) => p.provider === item.provider && p.baseUrl === item.baseUrl
+      );
+      if (!already) {
+        const created = addProviderAccount({
+          provider: item.provider,
+          name: item.name,
+          baseUrl: item.baseUrl,
+          defaultModel: item.defaultModel,
+        });
+        result.push(created);
+      } else {
+        result.push(sanitizeProvider(already));
+      }
+    }
+    return result;
+  }
+
+  router.get('/api/app/desktop/local-providers', (_req, res) => {
+    const ensured = ensureLocalProviders();
+    const locals = state.providers.filter(
+      (p: ExternalProviderAccount) => p.provider === 'ollama' || p.provider === 'lmstudio'
+    );
+    res.json({
+      ok: true,
+      providers: locals.map((p: ExternalProviderAccount) => ({ id: p.id, provider: p.provider, name: p.name, baseUrl: p.baseUrl, defaultModel: p.defaultModel, enabled: p.enabled })),
+    });
+  });
+
+  router.post('/api/app/desktop/local-providers/:id/toggle', (req, res) => {
+    const id = req.params.id;
+    const provider = state.providers.find((p: ExternalProviderAccount) => p.id === id && (p.provider === 'ollama' || p.provider === 'lmstudio'));
+    if (!provider) {
+      res.status(404).json({ ok: false, error: { message: 'Provedor local não encontrado.' } });
+      return;
+    }
+    provider.enabled = !provider.enabled;
+    saveState();
+    appendLog('info', `provedor local ${provider.provider} ${provider.enabled ? 'ativado' : 'desativado'}`);
+    res.json({ ok: true, id, enabled: provider.enabled });
   });
 
   return router;
