@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { PROVIDER_PRESETS } from '../data/providerPresets';
 import { readClipboardText } from '../utils/androidBridge';
-import type { GatewaySettings, ProviderPreset, SafeProviderSummary } from '../types/hub';
+import type { GatewaySettings, ProviderPreset, ProviderPresetId, SafeProviderSummary } from '../types/hub';
 
 interface QuickConnectPanelProps {
   providers: SafeProviderSummary[];
@@ -95,6 +95,23 @@ export const QuickConnectPanel: React.FC<QuickConnectPanelProps> = ({
   const enabledFor = useCallback(
     (preset: ProviderPreset) => providers.filter((p) => p.provider === preset.id && p.enabled).length,
     [providers]
+  );
+
+  const toggleAllForPreset = useCallback(
+    (providerId: ProviderPresetId) => {
+      const providersOfType = providers.filter((p) => p.provider === providerId);
+      if (providersOfType.length === 0) return;
+      const allEnabled = providersOfType.every((p) => p.enabled);
+      const targetEnabled = !allEnabled;
+      providersOfType.forEach((p) => {
+        if (p.enabled !== targetEnabled) {
+          void apiFetch(`/api/app/providers/${encodeURIComponent(p.id)}/toggle`, {
+            method: 'POST',
+          }).catch(() => undefined);
+        }
+      });
+    },
+    [apiFetch, providers]
   );
 
   const pasteFromClipboard = useCallback(async (preset: ProviderPreset) => {
@@ -293,10 +310,20 @@ export const QuickConnectPanel: React.FC<QuickConnectPanelProps> = ({
                 </div>
                 <p className="text-[11px] text-zinc-500 line-clamp-2">{preset.description}</p>
                 {connected > 0 ? (
-                  <p className="text-[11px] text-emerald-400 flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" />
-                    Conectado · {enabled} de {connected} modelo(s) ativo(s)
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" />
+                      Conectado · {enabled} de {connected} modelo(s) ativo(s)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void toggleAllForPreset(preset.id)}
+                      className={`text-[10px] font-medium shrink-0 px-2 py-0.5 rounded-full ${enabled === connected && enabled > 0 ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-800/60' : 'bg-zinc-900/40 text-zinc-400 border border-zinc-800/60'} disabled={enabled === 0}`}
+                      disabled={enabled === 0}
+                    >
+                      {enabled === connected && enabled > 0 ? 'Desativar todos' : 'Ativar todos'}
+                    </button>
+                  </div>
                 ) : (
                   <p className="text-[11px] text-zinc-500">Ainda não conectado.</p>
                 )}
