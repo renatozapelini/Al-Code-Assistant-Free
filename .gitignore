@@ -9,3 +9,7 @@ coverage/
 .qoder2api-data/
 .win-build/
 .android-build/
+
+# Binários acidentalmente commitados na raiz
+Code-Assistants-v3.5.13-setup.exe
+Code-Assistants-v3.5.14-source.zip
