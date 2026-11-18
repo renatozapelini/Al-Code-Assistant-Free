@@ -34,15 +34,17 @@ if (typeof window !== 'undefined' && sessionStorage.getItem('code-assistants-sw-
 }
 
 // Se está rodando pelo EXE (localhost), garante a identificação do Windows
-// com a versão real do aplicativo. Sobrescreve qualquer valor anterior
-// (inclusive o placeholder 0.0.0 do index.html) para a versão exibida estar correta.
+// ou Android com a versão real do aplicativo. Sobrescreve apenas se o HTML
+// não injetou a identificação (ex.: quando carregado via service worker cache).
 if (
   isLocalhost &&
-  typeof window !== 'undefined'
+  typeof window !== 'undefined' &&
+  !isDesktopApp()
 ) {
+  const isAndroid = /android/i.test(navigator.userAgent);
   (window as Window & { CodeAssistantsDesktop?: { version: string; platform: string } }).CodeAssistantsDesktop = {
     version: APP_VERSION,
-    platform: 'windows',
+    platform: isAndroid ? 'android' : 'windows',
   };
 }
 
