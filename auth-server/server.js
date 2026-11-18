@@ -23,6 +23,11 @@ app.get('/api/auth/health', (_req, res) => {
   res.json({ ok: true, service: 'code-assistants-auth', timestamp: new Date().toISOString() });
 });
 
+// Rota raiz para diagnóstico
+app.get('/', (_req, res) => {
+  res.json({ ok: true, service: 'Code Assistants Auth', version: '1.0.0', status: 'online' });
+});
+
 // Banco de dados SQLite
 const db = new sqlite3.Database('./auth.db');
 
