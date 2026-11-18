@@ -36,14 +36,14 @@ export function AuthPanel({ onAuthSuccess, onClose }: AuthPanelProps) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    setAuthBusy(true);
+    setBusy(true);
     try {
       await login(email, password);
       onAuthSuccess();
     } catch (err: any) {
       setErrors({ general: err.message || 'Erro ao fazer login' });
     } finally {
-      setAuthBusy(false);
+      setBusy(false);
     }
   };
 
@@ -64,14 +64,14 @@ export function AuthPanel({ onAuthSuccess, onClose }: AuthPanelProps) {
       return;
     }
 
-    setAuthBusy(true);
+    setBusy(true);
     try {
       await register(email, password);
       onAuthSuccess();
     } catch (err: any) {
       setErrors({ general: err.message || 'Erro ao cadastrar' });
     } finally {
-      setAuthBusy(false);
+      setBusy(false);
     }
   };
 
@@ -95,7 +95,7 @@ export function AuthPanel({ onAuthSuccess, onClose }: AuthPanelProps) {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
-            <Code2 className="w-6 h-6 text-emerald-400" />
+            <Code className="w-6 h-6 text-emerald-400" />
             <span className="text-lg font-bold text-zinc-100">Code Assistants</span>
           </div>
           <button
@@ -109,10 +109,10 @@ export function AuthPanel({ onAuthSuccess, onClose }: AuthPanelProps) {
         </div>
 
         <h2 className="text-2xl font-bold text-zinc-100 mb-2">
-          {authMode === 'login' ? 'Bem-vindo de volta' : 'Criar conta'}
+          {mode === 'login' ? 'Bem-vindo de volta' : 'Criar conta'}
         </h2>
         <p className="text-xs text-zinc-500 mb-6">
-          {authMode === 'login'
+          {mode === 'login'
             ? 'Entre com sua conta para acessar seus projetos e chaves de IA.'
             : 'Crie uma conta para sincronizar seus projetos e chaves em todos os dispositivos.'}
         </p>
@@ -146,7 +146,7 @@ export function AuthPanel({ onAuthSuccess, onClose }: AuthPanelProps) {
             >
               <Code className="w-4 h-4" />
               GitHub
-            </button>
+              </button>
           </div>
         </div>
 
@@ -184,7 +184,7 @@ export function AuthPanel({ onAuthSuccess, onClose }: AuthPanelProps) {
             </div>
             {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
           </div>
-          {authMode === 'register' && (
+          {mode === 'register' && (
             <div className="space-y-2">
               <label className="text-xs font-medium text-zinc-400">Confirmar senha</label>
               <input
@@ -198,27 +198,27 @@ export function AuthPanel({ onAuthSuccess, onClose }: AuthPanelProps) {
           )}
           <button
             type="button"
-            onClick={authMode === 'login' ? handleLogin : handleRegister}
-            disabled={authBusy}
+            onClick={mode === 'login' ? handleLogin : handleRegister}
+            disabled={busy}
             className={`w-full rounded-lg px-3 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors ${
-              authBusy
+              busy
                 ? 'bg-zinc-800/50 text-zinc-400'
                 : 'bg-emerald-600 text-white hover:bg-emerald-500'
             }`}
           >
-            {authBusy ? (
+            {busy ? (
               <>
                 <span className="w-4 h-4 animate-spin border-2 border-white border-t-transparent rounded-full" />
-                {authMode === 'login' ? 'Entrando...' : 'Criando conta...'}
+                {mode === 'login' ? 'Entrando...' : 'Criando conta...'}
               </>
             ) : (
-              authMode === 'login' ? 'Entrar' : 'Criar conta'
+              mode === 'login' ? 'Entrar' : 'Criar conta'
             )}
           </button>
         </div>
 
         <div className="mt-6 border-t border-zinc-800/50 pt-4 text-xs text-zinc-500 text-center">
-          {authMode === 'login' ? (
+          {mode === 'login' ? (
             <>
               <p>Não tem uma conta?</p>
               <button
