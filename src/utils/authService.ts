@@ -1,4 +1,5 @@
 import type { SafeProviderSummary } from '../types/hub';
+import { isDesktopApp } from './platform';
 
 const AUTH_SERVER = process.env.VITE_AUTH_SERVER || 'http://localhost:3001';
 
@@ -41,6 +42,9 @@ export function getAuthToken(): string | null {
 }
 
 export async function register(email: string, password: string): Promise<AuthTokens> {
+  if (isDesktopApp()) {
+    return login(email, password);
+  }
   const res = await fetch(`${AUTH_SERVER}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -53,6 +57,12 @@ export async function register(email: string, password: string): Promise<AuthTok
 }
 
 export async function login(email: string, password: string): Promise<AuthTokens> {
+  if (isDesktopApp()) {
+    // Autenticação local no computador: não depende de servidor externo nem de .env.
+    const token = `desktop-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setAuthToken(token);
+    return { token, user: { id: 'desktop-local', email, is_active: true } };
+  }
   const res = await fetch(`${AUTH_SERVER}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

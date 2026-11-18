@@ -34,7 +34,6 @@ export default function App() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isAuth, setIsAuth] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
-  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
   const navigate = useCallback((tab: NavTab) => {
@@ -48,6 +47,7 @@ export default function App() {
   const code = useCodeProjects(apiFetch);
   const { importProjects } = code;
 
+  // Fallback: se a injeção do /desktop-bootstrap.js no HTML falhou, tenta carregar manualmente.
   useEffect(() => {
     if (desktop || nativeAndroid || typeof window === 'undefined') return;
     let cancelled = false;
@@ -188,6 +188,7 @@ export default function App() {
     for (const id of current) knownProjectIds.add(id);
   }, [desktop, code.projects, apiFetch]);
 
+  // Inicializa autenticação ao abrir o app
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -217,7 +218,7 @@ export default function App() {
   const handleLogin = async (email: string, password: string) => {
     try {
       await login(email, password);
-      setAuthModalOpen(false);
+      setIsAuth(true);
     } catch (err) {
       throw err;
     }
@@ -226,12 +227,9 @@ export default function App() {
   const handleRegister = async (email: string, password: string) => {
     try {
       await register(email, password);
-      setAuthError('');
-      setAuthModalOpen(false);
+      setIsAuth(true);
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Erro ao cadastrar');
-    } finally {
-      setAuthBusy(false);
+      // O AuthPanel exibe seu próprio erro de cadastro.
     }
   };
 
@@ -259,12 +257,6 @@ export default function App() {
 
   const totalActiveEndpoints = overview?.totals.providersEnabled ?? 0;
 
-  const renderAuth = () => (
-    <div className="flex-1 flex items-center justify-center bg-[#090B0E]">
-      <AuthPanel onAuthSuccess={() => setIsAuth(true)} onClose={() => setAuthModalOpen(false)} />
-    </div>
-  );
-
   const renderMainContent = () => (
     <>
       <DesktopSidebar activeTab={activeTab} onSelectTab={navigate} online={isOnline} desktop={desktop} collapsed={false} />
@@ -275,9 +267,9 @@ export default function App() {
             onSelectTab={navigate}
             onQuickAddApi={() => setActiveTab('apis')}
             onOpenDrawer={() => setMobileDrawerOpen(true)}
-            onOpenAuth={() => setAuthModalOpen(true)}
+            onOpenAuth={() => {}}
             onLogout={handleLogout}
-            isAuthenticated={isAuth}
+            isAuthenticated={isAuth === true}
             userEmail={localStorage.getItem('code-assistants-token') ? 'usuário' : ''}
           />
         </div>
@@ -312,35 +304,68 @@ export default function App() {
 
         <main className="flex-1 min-w-0 w-full max-w-7xl lg:max-w-[1500px] mx-auto px-3 sm:px-6 lg:px-8 pt-4 lg:pt-6 pb-24 md:pb-12 lg:pb-16">
           <div className="mb-3"><AppUpdatePanel apiFetch={apiFetch} expanded={activeTab === 'options'} /></div>
-          {activeTab === 'options' && <section className="rounded-xl border border-zinc-800 bg-[#12151B] p-4 space-y-3">
-            <h1 className="text-lg font-semibold">Opções</h1>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {([
-                { id: 'scripts', label: 'Pré-prompt · detalhar uma ideia' },
-                { id: 'models', label: 'Modelos de IA' },
-                { id: 'analytics', label: 'Uso e falhas das APIs' },
-                { id: 'accounts', label: 'Qoder · login assistido e múltiplas contas' },
-                ...(desktop ? [{ id: 'desktop', label: 'Este computador · pastas e GitHub' }] : []),
-              ] as const).map(item => <button key={item.id} type="button" onClick={() => navigate(item.id as NavTab)} className="min-h-[48px] text-left text-sm px-3 rounded-lg border border-zinc-800">{item.label}</button>)}
-            </div>
-            <p className="text-xs text-zinc-500">Projetos ficam neste dispositivo. {desktop
-              ? 'No aplicativo Windows, os arquivos são gravados em uma pasta normal do computador e podem ser enviados ao seu GitHub em “Este computador”.'
-              : 'Você pode exportar o ZIP pela área Arquivos do projeto.'} Nenhuma chave ou projeto é publicado automaticamente.</p>
-          </section>}
-          <div hidden={activeTab !== 'projects'}>
-            <CodeAssistantsPanel projects={code.projects} activeId={code.activeId} busyId={code.busyId}
-              providers={overview?.providers ?? []} error={code.error} prefill={projectPrefill}
-              onConsumePrefill={() => setProjectPrefill('')} onCreate={code.create} onSelect={code.select}
-              view="home" onConfigureProviders={code.configureProviders} onExecutionBlocked={code.setExecutionBlocked}
-              onRun={(id) => void code.run(id)} onPause={code.pause} onSaveFile={code.saveFile} onImportFiles={code.saveFiles} onRequestChange={code.requestChange}
-              onExport={code.exportProject} onNavigate={navigate} nativeAndroid={nativeAndroid}
-              onRenameProject={code.renameProject} onDeleteProject={code.deleteProject}
-              onBuild={(id) => { if (!code.busyId) {
-                if (nativeAndroid) code.exportProject(id);
-                else setBuildProject(code.projects.find((p) => p.id === id) ?? null);
-              } }} />
-          </div>
-
+          {activeTab === 'options' && (
+            <section className="rounded-xl border border-zinc-800 bg-[#12151B] p-4 space-y-3">
+              <h1 className="text-lg font-semibold">Opções</h1>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {([
+                  { id: 'scripts', label: 'Pré-prompt · detalhar uma ideia' },
+                  { id: 'models', label: 'Modelos de IA' },
+                  { id: 'analytics', label: 'Uso e falhas das APIs' },
+                  { id: 'accounts', label: 'Qoder · login assistido e múltiplas contas' },
+                  ...(desktop ? [{ id: 'desktop', label: 'Este computador · pastas e GitHub' }] : []),
+                ] as const).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => navigate(item.id as NavTab)}
+                    className="min-h-[48px] text-left text-sm px-3 rounded-lg border border-zinc-800"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-500">
+                Projetos ficam neste dispositivo.{' '}
+                {desktop
+                  ? 'No aplicativo Windows, os arquivos são gravados em uma pasta normal do computador e podem ser enviados ao seu GitHub em “Este computador”.'
+                  : 'Você pode exportar o ZIP pela área Arquivos do projeto.'}
+                Nenhuma chave ou projeto é publicado automaticamente.
+              </p>
+            </section>
+          )}
+          {activeTab === 'projects' && (
+            <CodeAssistantsPanel
+              projects={code.projects}
+              activeId={code.activeId}
+              busyId={code.busyId}
+              providers={overview?.providers ?? []}
+              error={code.error}
+              prefill={projectPrefill}
+              onConsumePrefill={() => setProjectPrefill('')}
+              onCreate={code.create}
+              onSelect={code.select}
+              view="home"
+              onConfigureProviders={code.configureProviders}
+              onExecutionBlocked={code.setExecutionBlocked}
+              onRun={(id) => void code.run(id)}
+              onPause={code.pause}
+              onSaveFile={code.saveFile}
+              onImportFiles={code.saveFiles}
+              onRequestChange={code.requestChange}
+              onExport={code.exportProject}
+              onNavigate={navigate}
+              nativeAndroid={nativeAndroid}
+              onRenameProject={code.renameProject}
+              onDeleteProject={code.deleteProject}
+              onBuild={(id) => {
+                if (!code.busyId) {
+                  if (nativeAndroid) code.exportProject(id);
+                  else setBuildProject(code.projects.find((p) => p.id === id) ?? null);
+                }
+              }}
+            />
+          )}
           {activeTab === 'chat' && (
             <MobileChatPanel
               models={models}
@@ -354,8 +379,7 @@ export default function App() {
               onConsumePrefill={() => setChatPrefillPrompt('')}
             />
           )}
-
-          <div hidden={activeTab !== 'scripts'}>
+          {activeTab === 'scripts' && (
             <ScriptGeneratorPanel
               models={[]}
               providers={overview?.providers ?? []}
@@ -374,23 +398,23 @@ export default function App() {
               onScriptCompleted={() => void loadAppData()}
             />
           )}
-
-          <div hidden={activeTab !== 'apis'} className="space-y-6">
-            <QuickConnectPanel
-              providers={overview?.providers ?? []}
-              settings={overview?.settings}
-              apiFetch={apiFetch}
-              onProvidersChanged={() => void loadAppData()}
-            />
-            <AiApisPanel
-              providers={overview?.providers ?? []}
-              settings={overview?.settings}
-              apiFetch={apiFetch}
-              onProvidersChanged={() => void loadAppData()}
-              onOpenQoder={() => navigate('accounts')}
-            />
-          </div>
-
+          {activeTab === 'apis' && (
+            <div className="space-y-6">
+              <QuickConnectPanel
+                providers={overview?.providers ?? []}
+                settings={overview?.settings}
+                apiFetch={apiFetch}
+                onProvidersChanged={() => void loadAppData()}
+              />
+              <AiApisPanel
+                providers={overview?.providers ?? []}
+                settings={overview?.settings}
+                apiFetch={apiFetch}
+                onProvidersChanged={() => void loadAppData()}
+                onOpenQoder={() => navigate('accounts')}
+              />
+            </div>
+          )}
           {activeTab === 'analytics' && (
             <Analytics
               overview={overview}
@@ -399,7 +423,6 @@ export default function App() {
               testingProviders={testingProviders}
             />
           )}
-
           {activeTab === 'models' && (
             <ModelsPanel
               models={models}
@@ -413,9 +436,7 @@ export default function App() {
               }}
             />
           )}
-
           {activeTab === 'accounts' && <QoderAccessPanel />}
-
           {activeTab === 'desktop' && (
             <DesktopPanel
               apiFetch={apiFetch}
@@ -426,9 +447,15 @@ export default function App() {
           )}
         </main>
 
-        {buildProject && <ProjectBuildReview key={`${buildProject.id}-${buildProject.revision}`} project={buildProject}
-          apiFetch={apiFetch} onClose={() => setBuildProject(null)}
-          onResult={(result) => code.recordBuild(buildProject.id, buildProject.revision, result)} />}
+        {buildProject && (
+          <ProjectBuildReview
+            key={`${buildProject.id}-${buildProject.revision}`}
+            project={buildProject}
+            apiFetch={apiFetch}
+            onClose={() => setBuildProject(null)}
+            onResult={(result) => code.recordBuild(buildProject.id, buildProject.revision, result)}
+          />
+        )}
         <MobileDrawer
           activeTab={activeTab}
           onSelectTab={navigate}
@@ -443,189 +470,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#090B0E] text-zinc-100 flex flex-col lg:flex-row">
-  return (
-    <div className="min-h-screen bg-[#090B0E] text-zinc-100 flex flex-col lg:flex-row">
       {!isAuth && (
         <div className="flex-1 flex items-center justify-center bg-[#090B0E]">
           <AuthPanel onAuthSuccess={() => setIsAuth(true)} onClose={() => setAuthModalOpen(false)} />
         </div>
       )}
-      {isAuth === true && (
-        <>
-          <DesktopSidebar activeTab={activeTab} onSelectTab={navigate} online={isOnline} desktop={desktop} collapsed={false} />
-          <div className="min-w-0 flex-1 flex flex-col">
-            <div className="lg:hidden">
-              <TopBar
-                activeTab={activeTab}
-                onSelectTab={navigate}
-                onQuickAddApi={() => setActiveTab('apis')}
-                onOpenDrawer={() => setMobileDrawerOpen(true)}
-                onOpenAuth={() => setAuthModalOpen(true)}
-                onLogout={handleLogout}
-                isAuthenticated={isAuth}
-                userEmail={localStorage.getItem('code-assistants-token') ? 'usuário' : ''}
-              />
-            </div>
-
-            {!isOnline && (
-              <div className="bg-amber-950/70 border-b border-amber-800/60 px-4 py-2 text-xs text-amber-200 text-center">
-                Sem conexão com a internet — operando em cache offline PWA / local.
-              </div>
-            )}
-
-            {fetchError && (
-              <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4">
-                <div className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/60 text-xs text-red-200 flex flex-wrap items-center justify-between gap-3">
-                  <span>{fetchError}</span>
-                  <span className="flex items-center gap-2">
-                    {desktop && (
-                      <a href="/diagnostico" className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-xs font-medium whitespace-nowrap">
-                        Diagnóstico
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void loadAppData()}
-                      className="px-3 py-1.5 rounded-lg bg-red-900/50 hover:bg-red-800/60 text-xs font-medium whitespace-nowrap"
-                    >
-                      Tentar novamente
-                    </button>
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <main className="flex-1 min-w-0 w-full max-w-7xl lg:max-w-[1500px] mx-auto px-3 sm:px-6 lg:px-8 pt-4 lg:pt-6 pb-24 md:pb-12 lg:pb-16">
-              <div className="mb-3"><AppUpdatePanel apiFetch={apiFetch} expanded={activeTab === 'options'} /></div>
-              {activeTab === 'options' && <section className="rounded-xl border border-zinc-800 bg-[#12151B] p-4 space-y-3">
-                <h1 className="text-lg font-semibold">Opções</h1>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {([
-                    { id: 'scripts', label: 'Pré-prompt · detalhar uma ideia' },
-                    { id: 'models', label: 'Modelos de IA' },
-                    { id: 'analytics', label: 'Uso e falhas das APIs' },
-                    { id: 'accounts', label: 'Qoder · login assistido e múltiplas contas' },
-                    ...(desktop ? [{ id: 'desktop', label: 'Este computador · pastas e GitHub' }] : []),
-                  ] as const).map(item => <button key={item.id} type="button" onClick={() => navigate(item.id as NavTab)} className="min-h-[48px] text-left text-sm px-3 rounded-lg border border-zinc-800">{item.label}</button>)}
-                </div>
-                <p className="text-xs text-zinc-500">Projetos ficam neste dispositivo. {desktop
-                  ? 'No aplicativo Windows, os arquivos são gravados em uma pasta normal do computador e podem ser enviados ao seu GitHub em “Este computador”.'
-                  : 'Você pode exportar o ZIP pela área Arquivos do projeto.'} Nenhuma chave ou projeto é publicado automaticamente.</p>
-              </section>}
-              <div hidden={activeTab !== 'projects'}>
-                <CodeAssistantsPanel projects={code.projects} activeId={code.activeId} busyId={code.busyId}
-                  providers={overview?.providers ?? []} error={code.error} prefill={projectPrefill}
-                  onConsumePrefill={() => setProjectPrefill('')} onCreate={code.create} onSelect={code.select}
-                  view="home" onConfigureProviders={code.configureProviders} onExecutionBlocked={code.setExecutionBlocked}
-                  onRun={(id) => void code.run(id)} onPause={code.pause} onSaveFile={code.saveFile} onImportFiles={code.saveFiles} onRequestChange={code.requestChange}
-                  onExport={code.exportProject} onNavigate={navigate} nativeAndroid={nativeAndroid}
-                  onRenameProject={code.renameProject} onDeleteProject={code.deleteProject}
-                  onBuild={(id) => { if (!code.busyId) {
-                    if (nativeAndroid) code.exportProject(id);
-                    else setBuildProject(code.projects.find((p) => p.id === id) ?? null);
-                  } }} />
-              </div>
-
-              {activeTab === 'chat' && (
-                <MobileChatPanel
-                  models={models}
-                  providers={overview?.providers ?? []}
-                  accountsCount={totalActiveEndpoints}
-                  selectedModelId={selectedModelId}
-                  apiFetch={apiFetch}
-                  onNavigate={navigate}
-                  onMessageCompleted={() => void loadAppData()}
-                  prefillPrompt={chatPrefillPrompt}
-                  onConsumePrefill={() => setChatPrefillPrompt('')}
-                />
-              )}
-
-              <div hidden={activeTab !== 'scripts'}>
-                <ScriptGeneratorPanel
-                  models={[]}
-                  providers={overview?.providers ?? []}
-                  accountsCount={totalActiveEndpoints}
-                  apiFetch={apiFetch}
-                  onNavigate={navigate}
-                  onSendToProject={(scriptText) => {
-                    setProjectPrefill(scriptText);
-                    navigate('projects');
-                  }}
-                  onSendToChat={(scriptText) => {
-                    setChatPrefillPrompt(scriptText);
-                    navigate('chat');
-                  }}
-                  onProvidersChanged={() => void loadAppData()}
-                  onScriptCompleted={() => void loadAppData()}
-                />
-              )}
-
-              <div hidden={activeTab !== 'apis'} className="space-y-6">
-                <QuickConnectPanel
-                  providers={overview?.providers ?? []}
-                  settings={overview?.settings}
-                  apiFetch={apiFetch}
-                  onProvidersChanged={() => void loadAppData()}
-                />
-                <AiApisPanel
-                  providers={overview?.providers ?? []}
-                  settings={overview?.settings}
-                  apiFetch={apiFetch}
-                  onProvidersChanged={() => void loadAppData()}
-                  onOpenQoder={() => navigate('accounts')}
-                />
-              </div>
-
-              {activeTab === 'analytics' && (
-                <Analytics
-                  overview={overview}
-                  onNavigate={navigate}
-                  onTestAllProviders={handleTestAllProviders}
-                  testingProviders={testingProviders}
-                />
-              )}
-
-              {activeTab === 'models' && (
-                <ModelsPanel
-                  models={models}
-                  apiFetch={apiFetch}
-                  onModelsUpdated={setModels}
-                  onNavigate={navigate}
-                  onProvidersChanged={() => void loadAppData()}
-                  onTestModelInChat={(modelId) => {
-                    setSelectedModelId(modelId);
-                    navigate('chat');
-                  }}
-                />
-              )}
-
-              {activeTab === 'accounts' && <QoderAccessPanel />}
-
-              {activeTab === 'desktop' && (
-                <DesktopPanel
-                  apiFetch={apiFetch}
-                  projects={code.projects.map((project) => ({ id: project.id, name: project.name, files: Object.keys(project.files).length }))}
-                  onSaveAll={saveAllToDisk}
-                  onRestoreFromDisk={restoreFromDisk}
-                />
-              )}
-            </main>
-
-            {buildProject && <ProjectBuildReview key={`${buildProject.id}-${buildProject.revision}`} project={buildProject}
-              apiFetch={apiFetch} onClose={() => setBuildProject(null)}
-              onResult={(result) => code.recordBuild(buildProject.id, buildProject.revision, result)} />}
-            <MobileDrawer
-              activeTab={activeTab}
-              onSelectTab={navigate}
-              isOpen={mobileDrawerOpen}
-              onClose={() => setMobileDrawerOpen(false)}
-              online={isOnline}
-              desktop={desktop}
-            />
-          </div>
-        </>
-      )}
+      {isAuth === true && renderMainContent()}
     </div>
   );
-}
 }
