@@ -102,3 +102,15 @@ export async function deleteUserKey(id: string): Promise<void> {
 export async function isAuthenticated(): Promise<boolean> {
   return !!getAuthToken();
 }
+
+export async function isServerOnline(): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_SERVER}/api/auth/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

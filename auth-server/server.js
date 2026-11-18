@@ -11,8 +11,17 @@ const JWT_SECRET = process.env.JWT_SECRET || 'code-assistants-secret-change-me';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@codeassistants.local';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'CodeAssistantsAdmin2026!';
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
+
+// Health check endpoint
+app.get('/api/auth/health', (_req, res) => {
+  res.json({ ok: true, service: 'code-assistants-auth', timestamp: new Date().toISOString() });
+});
 
 // Banco de dados SQLite
 const db = new sqlite3.Database('./auth.db');
