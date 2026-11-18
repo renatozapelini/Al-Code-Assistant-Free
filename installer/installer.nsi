@@ -4,6 +4,7 @@
 ; - cria a pasta visível de projetos em Documentos\Code Assistants\Projetos;
 ; - cria atalhos na área de trabalho e no menu Iniciar, com desinstalador;
 ; - desinstalar NÃO apaga projetos nem chaves: essas pastas ficam fora da instalação.
+; - configura o servidor de autenticação durante a instalação.
 ;
 ; Compilado no CI com: makensis -DAPP_VERSION=x.y.z -DAPP_EXE=<exe> -DOUTFILE=<setup.exe>
 
@@ -42,7 +43,7 @@ BrandingText "${APP_NAME} ${APP_VERSION}"
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "${APP_NAME} ${APP_VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "Este instalador coloca o Code Assistants no seu usuário do Windows, sem precisar de administrador.$\r$\n$\r$\nSe já houver uma versão instalada, ela será substituída automaticamente.$\r$\n$\r$\nSeus projetos ficam em Documentos\Code Assistants\Projetos, e chaves e preferências ficam em AppData. Atualizar ou desinstalar o aplicativo não apaga nenhum dos dois."
+!define MUI_WELCOMEPAGE_TEXT "Este instalador coloca o Code Assistants no seu usuário do Windows, sem precisar de administrador.$\r$\n$\r$\nSe já houver uma versão instalada, ela será substituída automaticamente.$\r$\n$\r$\nSeus projetos ficam em Documentos\Code Assistants\Projetos, e chaves e preferências ficam em AppData. Atualizar ou desinstalar o aplicativo não apaga nenhum dos dois.$\r$\n$\r$\nVocê também poderá configurar o login no GitHub para sincronizar seus projetos entre computadores."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE_NAME}"
 !define MUI_FINISHPAGE_RUN_TEXT "Abrir o Code Assistants agora"
 !insertmacro MUI_PAGE_WELCOME
