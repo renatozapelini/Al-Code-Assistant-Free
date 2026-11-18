@@ -5,7 +5,7 @@ import {
   Eye,
   EyeOff,
   Code,
-  Google,
+  Globe,
   Loader2,
   Lock,
   Mail,
@@ -136,7 +136,7 @@ export function AuthPanel({ onAuthSuccess, onClose }: AuthPanelProps) {
               onClick={handleLoginWithGoogle}
               className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-zinc-800 bg-[#0B0E12] text-zinc-300 hover:bg-zinc-800/50 focus:outline-none focus:border-emerald-600"
             >
-              <Google className="w-4 h-4" />
+              <Globe className="w-4 h-4" />
               Google
             </button>
             <button
