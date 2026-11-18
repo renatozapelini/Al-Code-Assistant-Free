@@ -10,10 +10,10 @@ import {
   Monitor,
   RefreshCw,
   Save,
-  ToggleRight,
   Upload,
 } from 'lucide-react';
 import { isDesktopApp } from '../utils/platform';
+import { isAuthenticated, isServerOnline, logout } from '../utils/authService';
 
 // Tela do computador: pastas locais, diagnóstico e login no GitHub para enviar
 // um projeto direto do disco. O token nunca é exibido de volta e fica só nesta
@@ -82,8 +82,6 @@ export function DesktopPanel({ apiFetch, projects, onSaveAll, onRestoreFromDisk 
   const [busy, setBusy] = useState(false);
 
   const [viewer, setViewer] = useState<Viewer | null>(null);
-  const [token, setToken] = useState('');
-  const [connecting, setConnecting] = useState(false);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
 
@@ -174,6 +172,7 @@ export function DesktopPanel({ apiFetch, projects, onSaveAll, onRestoreFromDisk 
         setInfo(data);
         const first = data.projects[0]?.id ?? '';
         setProjectId((current) => current || first);
+        setStored(data.projects.map((p) => ({ id: p.id, name: p.name, files: p.files })));
       } catch (err) {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Não foi possível abrir a pasta de projetos.');
       }
@@ -271,15 +270,11 @@ export function DesktopPanel({ apiFetch, projects, onSaveAll, onRestoreFromDisk 
     }
   };
 
-  if (!desktop) {
-    return <section className={box}>
-      <h2 className="text-base font-semibold text-zinc-100">Este computador</h2>
-      <p className="mt-2 text-xs text-zinc-400">Pastas locais e login no GitHub estão disponíveis no aplicativo do Windows. No APK, use Exportar ZIP na área de arquivos do projeto.</p>
-    </section>;
-  }
+  const [token, setToken] = useState('');
+  const [connecting, setConnecting] = useState(false);
 
-  const connected = Boolean(viewer);
-  const stored = info?.projects ?? [];
+  const [stored, setStored] = useState<{ id: string; name: string; files: number }[]>(projects);
+
   const projectOption = (id: string, label: string) => <option key={id} value={id}>{label}</option>;
 
   return (
@@ -324,30 +319,27 @@ export function DesktopPanel({ apiFetch, projects, onSaveAll, onRestoreFromDisk 
         </div>
       </div>
 
+      {/* GitHub */}
       <div className={box}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-100"><Github className="h-4 w-4" />GitHub</h2>
-          {connected && <span className="flex items-center gap-2 text-xs text-emerald-300">
-            {viewer?.avatarUrl && <img src={viewer.avatarUrl} alt="" className="h-5 w-5 rounded-full" />}
-            {viewer?.login}
-            <button type="button" className="text-zinc-400 underline hover:text-zinc-200" onClick={() => void disconnect()}><LogOut className="mr-1 inline h-3 w-3" />Desconectar</button>
-          </span>}
+          {viewer ? (
+            <span className="flex items-center gap-2 text-xs text-emerald-300">
+              {viewer.avatarUrl && <img src={viewer.avatarUrl} alt="" className="h-5 w-5 rounded-full" />}
+              {viewer.login}
+              <button type="button" className="text-zinc-400 underline hover:text-zinc-200" onClick={() => void disconnect()}><LogOut className="mr-1 inline h-3 w-3" />Desconectar</button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void connect()}
+              className={primary} disabled={connecting}
+            >
+              {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}Conectar GitHub
+            </button>
+          )}
         </div>
-        <p className="mt-1 text-xs text-zinc-500">Cole um token pessoal com permissão de repositórios. O token fica só neste computador; nada é enviado sem você confirmar.</p>
-
-        {!connected && <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <input
-            type="password" value={token} onChange={(event) => setToken(event.target.value)}
-            placeholder="ghp_… ou github_pat_…" autoComplete="off" spellCheck={false}
-            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-[#0B0E12] px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-emerald-600"
-          />
-          <button type="button" className={primary} onClick={() => void connect()} disabled={connecting || token.trim().length < 20}>
-            {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}Conectar
-          </button>
-        </div>}
-        {!connected && <p className="mt-2 text-[11px] text-zinc-500">Como criar: github.com → Settings → Developer settings → Personal access tokens → Fine-grained token, com acesso ao repositório e permissão “Contents: Read and write”.</p>}
-
-        {connected && <div className="mt-4 space-y-3">
+        {viewer && <div className="mt-4 space-y-3">
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="text-xs text-zinc-400">Projeto na pasta
               <select value={projectId} onChange={(event) => setProjectId(event.target.value)}
@@ -429,7 +421,7 @@ export function DesktopPanel({ apiFetch, projects, onSaveAll, onRestoreFromDisk 
             <div key={provider.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-zinc-800/50 bg-[#090B0E]/50 text-xs">
               <div className="flex items-center gap-2 min-w-0">
                 <Circle className={`h-2 w-2 ${provider.enabled ? 'fill-emerald-400 text-emerald-400' : 'fill-zinc-500 text-zinc-500'}`} aria-hidden="true" />
-                <span className="truncate text-zinc-200">{provider.name}</span>
+                <span className="min-w-0 truncate text-zinc-200">{provider.name}</span>
                 <span className="text-[10px] text-zinc-500 ml-1">({provider.defaultModel})</span>
               </div>
               <button

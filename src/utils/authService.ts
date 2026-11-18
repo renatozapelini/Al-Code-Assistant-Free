@@ -5,6 +5,9 @@ const AUTH_SERVER = process.env.VITE_AUTH_SERVER || 'http://localhost:3001';
 export interface AuthUser {
   id: string;
   email: string;
+  is_admin?: boolean;
+  is_active?: boolean;
+  email_verified?: boolean;
 }
 
 export interface AuthTokens {
@@ -61,6 +64,14 @@ export async function login(email: string, password: string): Promise<AuthTokens
   return data;
 }
 
+export async function loginWithGoogle(): Promise<void> {
+  window.location.href = `${AUTH_SERVER}/api/auth/google`;
+}
+
+export async function loginWithGithub(): Promise<void> {
+  window.location.href = `${AUTH_SERVER}/api/auth/github`;
+}
+
 export function logout() {
   setAuthToken(null);
 }
@@ -113,4 +124,61 @@ export async function isServerOnline(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function verifyEmail(token: string): Promise<void> {
+  const res = await fetch(`${AUTH_SERVER}/api/auth/verify-email?token=${token}`, {
+    method: 'GET',
+  });
+  if (!res.ok) throw new Error('Erro ao verificar email');
+}
+
+// Funções de admin
+export async function getAllUsers(): Promise<any[]> {
+  const token = getAuthToken();
+  if (!token) throw new Error('Não autenticado');
+  const res = await fetch(`${AUTH_SERVER}/api/admin/users`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Erro ao listar usuários');
+  const data = await res.json();
+  return data.users || [];
+}
+
+export async function toggleUserActive(userId: string, isActive: boolean): Promise<void> {
+  const token = getAuthToken();
+  if (!token) throw new Error('Não autenticado');
+  const res = await fetch(`${AUTH_SERVER}/api/admin/users/${userId}/toggle`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ is_active: isActive }),
+  });
+  if (!res.ok) throw new Error('Erro ao alterar status do usuário');
+}
+
+export async function toggleUserAdmin(userId: string, isAdmin: boolean): Promise<void> {
+  const token = getAuthToken();
+  if (!token) throw new Error('Não autenticado');
+  const res = await fetch(`${AUTH_SERVER}/api/admin/users/${id}/role`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ is_admin: isAdmin }),
+  });
+  if (!res.ok) throw new Error('Erro ao alterar papel do usuário');
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  const token = getAuthToken();
+  if (!token) throw new Error('Não autenticado');
+  const res = await fetch(`${AUTH_SERVER}/api/admin/users/${userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Erro ao deletar usuário');
 }
