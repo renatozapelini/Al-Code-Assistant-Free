@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AiApisPanel } from './components/AiApisPanel';
 import { Analytics } from './components/Analytics';
-import { BottomNav } from './components/BottomNav';
 import { MobileChatPanel } from './components/MobileChatPanel';
+import { MobileDrawer } from './components/MobileDrawer';
 import { ModelsPanel } from './components/ModelsPanel';
 import { QuickConnectPanel } from './components/QuickConnectPanel';
 import { ScriptGeneratorPanel } from './components/ScriptGeneratorPanel';
@@ -53,6 +53,7 @@ export default function App() {
       // ignorar
     }
   }, [sidebarCollapsed]);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const code = useCodeProjects(apiFetch);
   const { importProjects } = code;
 
@@ -232,6 +233,7 @@ export default function App() {
         activeTab={activeTab}
         onSelectTab={navigate}
         onQuickAddApi={() => setActiveTab('apis')}
+        onOpenDrawer={() => setMobileDrawerOpen(true)}
       />
       </div>
 
@@ -384,11 +386,13 @@ export default function App() {
       {buildProject && <ProjectBuildReview key={`${buildProject.id}-${buildProject.revision}`} project={buildProject}
         apiFetch={apiFetch} onClose={() => setBuildProject(null)}
         onResult={(result) => code.recordBuild(buildProject.id, buildProject.revision, result)} />}
-      <BottomNav
+      <MobileDrawer
         activeTab={activeTab}
         onSelectTab={navigate}
-        accountsCount={overview?.totals.accountsEnabled ?? 0}
-        providersCount={overview?.totals.providersEnabled ?? 0}
+        isOpen={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        online={isOnline}
+        desktop={desktop}
       />
       </div>
     </div>

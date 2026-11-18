@@ -8,6 +8,7 @@ interface TopBarProps {
   activeTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   onQuickAddApi: () => void;
+  onOpenDrawer?: () => void;
 }
 
 const NAV_ITEMS: { id: NavTab; label: string }[] = [
@@ -17,7 +18,7 @@ const NAV_ITEMS: { id: NavTab; label: string }[] = [
   { id: 'options', label: 'Opções' },
 ];
 
-export const TopBar: React.FC<TopBarProps> = ({ activeTab, onSelectTab }) => {
+export const TopBar: React.FC<TopBarProps> = ({ activeTab, onSelectTab, onQuickAddApi, onOpenDrawer }) => {
   const { isInstallable, isInstalled, install } = usePWAInstall();
   const primaryActionClass = 'min-h-[40px] min-w-[40px] px-2.5 sm:px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-semibold flex items-center justify-center gap-1.5 shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300';
 
@@ -54,7 +55,12 @@ export const TopBar: React.FC<TopBarProps> = ({ activeTab, onSelectTab }) => {
         </nav>
 
         <div className="flex flex-wrap items-center justify-end gap-2 min-w-0 max-w-full ml-auto md:shrink-0">
-          <button type="button" onClick={() => onSelectTab('options')} aria-label="Abrir opções" className="md:hidden min-h-[44px] min-w-[44px] rounded-lg text-zinc-400 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-emerald-500">
+          <button
+            type="button"
+            onClick={onOpenDrawer}
+            aria-label="Abrir menu"
+            className="md:hidden min-h-[44px] min-w-[44px] rounded-lg text-zinc-400 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
             <Menu className="w-5 h-5" />
           </button>
           {!androidBridge() && isInstallable && !isInstalled && (
