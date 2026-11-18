@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Check,
+  Circle,
   FolderOpen,
   Github,
   Loader2,
   LogOut,
+  Monitor,
   RefreshCw,
   Save,
+  ToggleRight,
   Upload,
 } from 'lucide-react';
 import { isDesktopApp } from '../utils/platform';
@@ -93,16 +96,59 @@ export function DesktopPanel({ apiFetch, projects, onSaveAll, onRestoreFromDisk 
   const [result, setResult] = useState<PushResult | null>(null);
   const [pushError, setPushError] = useState('');
 
+  // Modelos locais (Ollama / LM Studio)
+  const [localProviders, setLocalProviders] = useState<{ id: string; provider: string; name: string; baseUrl: string; defaultModel: string; enabled: boolean }[]>([]);
+  const [localEnabled, setLocalEnabled] = useState(true);
+  const [localBusy, setLocalBusy] = useState(false);
+
+  const loadLocalProviders = useCallback(async () => {
+    try {
+      const [statusRes, listRes] = await Promise.all([
+        readJson<{ enabled: boolean }>(await apiFetch('/api/app/desktop/local-providers-enabled')),
+        readJson<{ providers: { id: string; provider: string; name: string; baseUrl: string; defaultModel: string; enabled: boolean }[] }>(await apiFetch('/api/app/desktop/local-providers')),
+      ]);
+      setLocalEnabled(statusRes.enabled);
+      setLocalProviders(Array.isArray(listRes.providers) ? listRes.providers : []);
+    } catch {
+      // silencioso: modelos locais são opcionais
+    }
+  }, [apiFetch]);
+
+  const toggleLocal = async (id: string) => {
+    setLocalBusy(true);
+    try {
+      await readJson(await apiFetch(`/api/app/desktop/local-providers/${encodeURIComponent(id)}/toggle`, { method: 'POST' }));
+      await loadLocalProviders();
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : 'Não foi possível alternar o modelo local.');
+    } finally {
+      setLocalBusy(false);
+    }
+  };
+
+  const toggleLocalGlobal = async () => {
+    setLocalBusy(true);
+    try {
+      const data = await readJson<{ enabled: boolean }>(await apiFetch('/api/app/desktop/local-providers-enabled/toggle', { method: 'POST' }));
+      setLocalEnabled(data.enabled);
+      await loadLocalProviders();
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : 'Não foi possível alternar modelos locais.');
+    } finally {
+      setLocalBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!desktop) return;
+    void loadLocalProviders();
+  }, [apiFetch, desktop, loadLocalProviders]);
+
   const loadStatus = useCallback(async () => {
     try {
-      const data = await readJson<{ connected: boolean; viewer?: Viewer; error?: { message?: string } }>(
-        await apiFetch('/api/app/desktop/github/status')
-      );
-      setViewer(data.connected && data.viewer ? data.viewer : null);
-      if (data.error?.message) setPushError(data.error.message);
+      const data = await readJson<{ connected: boolean }>(await apiFetch('/api/app/desktop/github/status'));
       return data.connected;
-    } catch (err) {
-      setPushError(err instanceof Error ? err.message : 'Não foi possível falar com o GitHub.');
+    } catch {
       return false;
     }
   }, [apiFetch]);
@@ -355,6 +401,49 @@ export function DesktopPanel({ apiFetch, projects, onSaveAll, onRestoreFromDisk 
             </p>
           </div>}
         </div>}
+      </div>
+
+      {/* Modelos locais (Ollama / LM Studio) */}
+      <div className={box}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+            <Monitor className="h-4 w-4" />Modelos locais (offline)
+          </h2>
+          <button
+            type="button"
+            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${localEnabled ? 'bg-emerald-600 text-white' : 'bg-zinc-800/60 text-zinc-400 border border-zinc-700'} hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed`}
+            onClick={() => void toggleLocalGlobal()}
+            disabled={localBusy}
+          >
+            {localBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ToggleRight className="h-4 w-4" />}
+            {localEnabled ? 'Ativado' : 'Desativado'}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-zinc-500">Ollama e LM Studio rodam no seu computador, sem chave de API nem internet.</p>
+
+        {!localEnabled && <p className="mt-2 text-xs text-zinc-500">Modelos locais estão desativados. Ative para usar provedores locais.</p>}
+
+        {localEnabled && <div className="mt-3 space-y-2">
+          {localProviders.length === 0 && <p className="text-xs text-zinc-500">Nenhum modelo local configurado ainda.</p>}
+          {localProviders.map((provider) => (
+            <div key={provider.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-zinc-800/50 bg-[#090B0E]/50 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <Circle className={`h-2 w-2 ${provider.enabled ? 'fill-emerald-400 text-emerald-400' : 'fill-zinc-500 text-zinc-500'}`} aria-hidden="true" />
+                <span className="truncate text-zinc-200">{provider.name}</span>
+                <span className="text-[10px] text-zinc-500 ml-1">({provider.defaultModel})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void toggleLocal(provider.id)}
+                disabled={localBusy}
+                className={`rounded-lg px-2 py-1 text-[10px] ${provider.enabled ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/40' : 'bg-zinc-900/50 text-zinc-400 border border-zinc-800/60 hover:bg-zinc-800/40'}`}
+              >
+                {provider.enabled ? 'Ativo' : 'Desativo'}
+              </button>
+            </div>
+          ))}
+        </div>}
+        {localBusy && <p className="mt-2 text-xs text-zinc-500 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Atualizando…</p>}
       </div>
     </section>
   );
