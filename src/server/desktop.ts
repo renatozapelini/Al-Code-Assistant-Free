@@ -69,6 +69,10 @@ function fail(res: express.Response, err: unknown, fallback = 'Não foi possíve
 export function createDesktopRouter(): express.Router {
   const router = express.Router();
 
+  // Garante que os provedores locais (Ollama / LM Studio) existam no estado
+  // na inicialização do servidor, para que venham instalados de fábrica.
+  ensureLocalProviders();
+
   router.get('/api/app/desktop', (_req, res) => {
     const paths = ensureDesktopDirs();
     res.json({
