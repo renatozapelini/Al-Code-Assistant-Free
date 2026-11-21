@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Save,
   Upload,
+  ToggleRight,
 } from 'lucide-react';
 import { isDesktopApp } from '../utils/platform';
 import { isAuthenticated, isServerOnline, logout } from '../utils/authService';
@@ -273,7 +274,7 @@ export function DesktopPanel({ apiFetch, projects, onSaveAll, onRestoreFromDisk 
   const [token, setToken] = useState('');
   const [connecting, setConnecting] = useState(false);
 
-  const [stored, setStored] = useState<{ id: string; name: string; files: number }[]>(projects);
+  const [stored, setStored] = useState(projects);
 
   const projectOption = (id: string, label: string) => <option key={id} value={id}>{label}</option>;
 

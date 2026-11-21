@@ -172,7 +172,7 @@ export async function toggleUserActive(userId: string, isActive: boolean): Promi
 export async function toggleUserAdmin(userId: string, isAdmin: boolean): Promise<void> {
   const token = getAuthToken();
   if (!token) throw new Error('Não autenticado');
-  const res = await fetch(`${AUTH_SERVER}/api/admin/users/${id}/role`, {
+  const res = await fetch(`${AUTH_SERVER}/api/admin/users/${userId}/role`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

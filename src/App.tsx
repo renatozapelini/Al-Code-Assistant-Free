@@ -3,11 +3,13 @@ import { AiApisPanel } from './components/AiApisPanel';
 import { Analytics } from './components/Analytics';
 import { AuthPanel } from './components/AuthPanel';
 import { BottomNav } from './components/BottomNav';
+import { CodeAssistantsPanel } from './components/CodeAssistantsPanel';
 import { MobileChatPanel } from './components/MobileChatPanel';
 import { MobileDrawer } from './components/MobileDrawer';
 import { ModelsPanel } from './components/ModelsPanel';
 import { ProjectBuildReview } from './components/ProjectBuildReview';
 import { QoderAccessPanel } from './components/QoderAccessPanel';
+import { QuickConnectPanel } from './components/QuickConnectPanel';
 import { ScriptGeneratorPanel } from './components/ScriptGeneratorPanel';
 import { TopBar } from './components/TopBar';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -23,6 +25,7 @@ import type { HubOverview, NavTab, QoderModel } from './types/hub';
 
 export default function App() {
   const isOnline = useOnlineStatus();
+  const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTab>('projects');
   const [projectPrefill, setProjectPrefill] = useState('');
   const [buildProject, setBuildProject] = useState<CodeProject | null>(null);
@@ -259,7 +262,7 @@ export default function App() {
 
   const renderMainContent = () => (
     <>
-      <DesktopSidebar activeTab={activeTab} onSelectTab={navigate} online={isOnline} desktop={desktop} collapsed={false} />
+      <DesktopSidebar activeTab={activeTab} onSelectTab={navigate} online={isOnline} desktop={desktop} collapsed={collapsed} onToggleCollapsed={() => setCollapsed(!collapsed)} />
       <div className="min-w-0 flex-1 flex flex-col">
         <div className="lg:hidden">
           <TopBar
@@ -348,7 +351,7 @@ export default function App() {
               view="home"
               onConfigureProviders={code.configureProviders}
               onExecutionBlocked={code.setExecutionBlocked}
-              onRun={(id) => void code.run(id)}
+              onRun={(id: string) => void code.run(id)}
               onPause={code.pause}
               onSaveFile={code.saveFile}
               onImportFiles={code.saveFiles}
@@ -358,7 +361,7 @@ export default function App() {
               nativeAndroid={nativeAndroid}
               onRenameProject={code.renameProject}
               onDeleteProject={code.deleteProject}
-              onBuild={(id) => {
+              onBuild={(id: string) => {
                 if (!code.busyId) {
                   if (nativeAndroid) code.exportProject(id);
                   else setBuildProject(code.projects.find((p) => p.id === id) ?? null);
@@ -377,6 +380,7 @@ export default function App() {
               onMessageCompleted={() => void loadAppData()}
               prefillPrompt={chatPrefillPrompt}
               onConsumePrefill={() => setChatPrefillPrompt('')}
+              onSelectModelId={setSelectedModelId}
             />
           )}
           {activeTab === 'scripts' && (
@@ -472,7 +476,7 @@ export default function App() {
     <div className="min-h-screen bg-[#090B0E] text-zinc-100 flex flex-col lg:flex-row">
       {!isAuth && (
         <div className="flex-1 flex items-center justify-center bg-[#090B0E]">
-          <AuthPanel onAuthSuccess={() => setIsAuth(true)} onClose={() => setAuthModalOpen(false)} />
+          <AuthPanel onAuthSuccess={() => setIsAuth(true)} onClose={() => {}} />
         </div>
       )}
       {isAuth === true && renderMainContent()}
